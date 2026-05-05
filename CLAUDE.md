@@ -2,6 +2,16 @@
 
 Personal blog (Lee's Blog). Full-stack TypeScript app — React SPA + Hono/tRPC API + SQLite, served as one Node process in production.
 
+## Prerequisites
+
+First-run setup before any `npm` command:
+
+1. **Node.js**: 20.x or newer (ESM-only project, `"type": "module"`).
+2. **Install deps**: `npm install` (uses `package-lock.json`; do not switch to pnpm/yarn).
+3. **Env file**: `cp .env.example .env`, then set `APP_ID`, `APP_SECRET`, `DATABASE_URL`. In dev, missing values fall back to defaults; in production they throw.
+4. **DB init**: `npm run db:push` creates SQLite tables at `DATABASE_URL` path (default `./blog.db`).
+5. **Optional CLI auth**: for `scripts/publish.ts`, write `~/.leeblog.json` with `{ "apiKey": "..." }` matching a row in `users.api_key`, or set `LEEBLOG_API_KEY`.
+
 ## Commands
 
 ```bash
@@ -45,6 +55,8 @@ SQLite via `better-sqlite3`. DB file path comes from `DATABASE_URL` (e.g. `sqlit
 
 JWT (HS256) signed with `APP_SECRET`, 7-day expiry. Session lives in a `session=<jwt>` cookie. The CLI uses an alternative `x-api-key` header matched against `users.api_key`. `authedQuery` and `adminQuery` both require `ctx.user`; there is no separate admin role check today (every registered user is treated as admin).
 
+> **TODO (auth-hardening)**: split `adminQuery` from `authedQuery` — add `users.role` column + role check in `api/middleware.ts`. Required before opening public registration.
+
 ### Env vars (required in production)
 
 `APP_ID`, `APP_SECRET`, `DATABASE_URL`. Loaded via `dotenv/config`; missing values throw only when `NODE_ENV=production`.
@@ -62,3 +74,4 @@ JWT (HS256) signed with `APP_SECRET`, 7-day expiry. Session lives in a `session=
 - `tsconfig.json.bak`, `vite.config.ts.bak`, `src/App.tsx.bak`, `src/main.tsx.bak` are local backups — ignore unless asked.
 - `error.log` is a runtime log file; not part of the source.
 - Default `APP_SECRET` fallback (`lee-blog-jwt-secret-change-me`) exists in `api/middleware.ts` and `api/context.ts` for dev. Production must set a real secret or env validation in `lib/env.ts` will throw.
+  - **TODO (pre-public-deploy)**: remove the hard-coded fallback strings from `api/middleware.ts` and `api/context.ts`; let `lib/env.ts` be the single source. Tracked alongside auth-hardening above.
