@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { trpc } from '@/providers/trpc';
 import { useAdmin } from '@/hooks/useAdmin';
@@ -42,15 +42,17 @@ export default function Admin() {
     onSuccess: () => refetch(),
   });
 
-  // Redirect if not setup
-  if (setupData?.isSetup) {
-    navigate('/admin/setup');
-    return null;
-  }
+  // Redirect: setupData.isSetup === true actually means "no admin yet, needs setup"
+  useEffect(() => {
+    if (!setupData) return;
+    if (setupData.isSetup) {
+      navigate('/admin/setup', { replace: true });
+    } else if (!isAdmin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [setupData, isAdmin, navigate]);
 
-  // Redirect if not logged in
-  if (!isAdmin && !setupData?.isSetup) {
-    navigate('/admin/login');
+  if (!setupData || setupData.isSetup || !isAdmin) {
     return null;
   }
 
