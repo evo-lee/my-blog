@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Link } from 'react-router';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { I18nProvider } from '@/i18n/useI18n';
 import { AdminProvider } from '@/hooks/useAdmin';
@@ -19,6 +19,23 @@ import AdminSetup from '@/pages/AdminSetup';
 import AdminLogin from '@/pages/AdminLogin';
 import AdminEditPost from '@/pages/AdminEditPost';
 import AdminNewPost from '@/pages/AdminNewPost';
+
+function NotFound() {
+  return (
+    <>
+      <SEO title="Not Found" description="The page you are looking for does not exist." url="/" />
+      <div className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center">
+        <h1 className="font-display text-4xl text-foreground mb-4">Page not found</h1>
+        <p className="text-muted-foreground mb-8">
+          The page you are looking for does not exist or has been moved.
+        </p>
+        <Link to="/" className="font-mono text-sm text-foreground underline underline-offset-4">
+          Return home
+        </Link>
+      </div>
+    </>
+  );
+}
 
 function Home() {
   return (
@@ -54,6 +71,7 @@ function AppContent() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/new" element={<AdminNewPost />} />
           <Route path="/admin/edit/:id" element={<AdminEditPost />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
       <Footer />
