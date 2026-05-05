@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 22% 17%;
+    --foreground: 0 0% 100%;
+    --card: 220 30% 14%;
+    --card-foreground: 0 0% 100%;
+    --popover: 220 30% 14%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 220 22% 17%;
+    --secondary: 220 15% 22%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 15% 22%;
+    --muted-foreground: 218 17% 49%;
+    --accent: 40 64% 61%;
+    --accent-foreground: 220 22% 17%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 15% 28%;
+    --input: 220 15% 28%;
+    --ring: 40 64% 61%;
+    --radius: 0.625rem;
+
+    --bg-base: #212936;
+    --bg-surface: #161e2e;
+    --text-primary: #ffffff;
+    --text-muted: #6e7b8f;
+    --accent-gold: #e3af5a;
+
+    /* Paper dot pattern */
+    --paper-dot-color: rgba(255, 255, 255, 0.035);
+    --paper-dot-size: 1px;
+    --paper-dot-space: 10px;
+  }
+
+  :root.light {
+    --background: 0 0% 98%;
+    --foreground: 220 22% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 22% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 22% 17%;
+    --primary: 220 22% 17%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 220 10% 92%;
+    --secondary-foreground: 220 22% 17%;
+    --muted: 220 10% 92%;
+    --muted-foreground: 220 10% 50%;
+    --accent: 40 64% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 10% 88%;
+    --input: 220 10% 88%;
+    --ring: 40 64% 45%;
+
+    --bg-base: #f8f9fa;
+    --bg-surface: #ffffff;
+    --text-primary: #212936;
+    --text-muted: #6e7b8f;
+    --accent-gold: #c9943a;
+
+    /* Paper dot pattern - light mode */
+    --paper-dot-color: rgba(0, 0, 0, 0.05);
+    --paper-dot-size: 1px;
+    --paper-dot-space: 10px;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+
+    /* Paper dot pattern background */
+    background-image: radial-gradient(
+      circle at center,
+      var(--paper-dot-color) var(--paper-dot-size),
+      transparent var(--paper-dot-size)
+    );
+    background-size: var(--paper-dot-space) var(--paper-dot-space);
+    background-position: 0 0;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+  }
+
+  a, button {
+    cursor: auto;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Newsreader', Georgia, serif;
+  }
+  .font-body {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  /* Paper texture overlay utility */
+  .paper-texture {
+    background-image: radial-gradient(
+        circle at center,
+        var(--paper-dot-color) var(--paper-dot-size),
+        transparent var(--paper-dot-size)
+      ),
+      radial-gradient(
+        circle at 12px 12px,
+        var(--paper-dot-color) calc(var(--paper-dot-size) * 0.6),
+        transparent calc(var(--paper-dot-size) * 0.6)
+      );
+    background-size: var(--paper-dot-space) var(--paper-dot-space);
+    background-position: 0 0, 0 0;
+  }
+
+  /* Line clamp utility */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}

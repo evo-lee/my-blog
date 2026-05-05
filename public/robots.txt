@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://cnwr4i2bpug3w.ok.kimi.link/sitemap.xml
+
+# Disallow admin paths when you add them later
+# Disallow: /admin/
+# Disallow: /api/

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Lee's Blog</title>
+    <link>https://cnwr4i2bpug3w.ok.kimi.link</link>
+    <description>Thoughts on literature, design, and the quiet spaces in between.</description>
+    <language>en</language>
+    <lastBuildDate>Mon, 05 May 2026 00:00:00 GMT</lastBuildDate>
+    <atom:link href="https://cnwr4i2bpug3w.ok.kimi.link/feed.xml" rel="self" type="application/rss+xml"/>
+    
+    <item>
+      <title>The Weight of Silence in Modern Fiction</title>
+      <link>https://cnwr4i2bpug3w.ok.kimi.link/article/silence-in-fiction</link>
+      <guid>https://cnwr4i2bpug3w.ok.kimi.link/article/silence-in-fiction</guid>
+      <pubDate>Sun, 12 Apr 2026 00:00:00 GMT</pubDate>
+      <description>In an age of constant noise, the most powerful literary moments are often those that say nothing at all.</description>
+    </item>
+    
+    <item>
+      <title>Brutalism Revisited: Form Follows Friction</title>
+      <link>https://cnwr4i2bpug3w.ok.kimi.link/article/brutalism-revisited</link>
+      <guid>https://cnwr4i2bpug3w.ok.kimi.link/article/brutalism-revisited</guid>
+      <pubDate>Sat, 28 Mar 2026 00:00:00 GMT</pubDate>
+      <description>Why the raw, unpolished aesthetic of brutalist design continues to resonate in a world obsessed with perfection.</description>
+    </item>
+    
+    <item>
+      <title>Solitude as a Creative Practice</title>
+      <link>https://cnwr4i2bpug3w.ok.kimi.link/article/solitude-creative</link>
+      <guid>https://cnwr4i2bpug3w.ok.kimi.link/article/solitude-creative</guid>
+      <pubDate>Sun, 15 Mar 2026 00:00:00 GMT</pubDate>
+      <description>The relationship between being alone and making meaningful work.</description>
+    </item>
+    
+    <item>
+      <title>The Craft of Slow Typing</title>
+      <link>https://cnwr4i2bpug3w.ok.kimi.link/article/craft-of-typing</link>
+      <guid>https://cnwr4i2bpug3w.ok.kimi.link/article/craft-of-typing</guid>
+      <pubDate>Sat, 28 Feb 2026 00:00:00 GMT</pubDate>
+      <description>On the lost art of composing at the speed of thought.</description>
+    </item>
+    
+    <item>
+      <title>On the Surface of Water</title>
+      <link>https://cnwr4i2bpug3w.ok.kimi.link/article/surface-of-water</link>
+      <guid>https://cnwr4i2bpug3w.ok.kimi.link/article/surface-of-water</guid>
+      <pubDate>Tue, 10 Feb 2026 00:00:00 GMT</pubDate>
+      <description>Stillness is not the absence of movement but the presence of a deeper current beneath.</description>
+    </item>
+    
+    <item>
+      <title>The Patina of Old Books</title>
+      <link>https://cnwr4i2bpug3w.ok.kimi.link/article/old-books</link>
+      <guid>https://cnwr4i2bpug3w.ok.kimi.link/article/old-books</guid>
+      <pubDate>Thu, 22 Jan 2026 00:00:00 GMT</pubDate>
+      <description>What worn spines and yellowed pages can teach us about time, memory, and the materiality of reading.</description>
+    </item>
+  </channel>
+</rss>
