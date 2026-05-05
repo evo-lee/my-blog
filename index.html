@@ -35,22 +35,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet" />
     
-    <!-- Google Analytics 4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-XXXXXXXXXX', {
-        page_title: document.title,
-        page_location: window.location.href,
-        send_page_view: false  // SPA 手动控制
-      });
-    </script>
-    
-    <!-- Umami Analytics (self-hosted or cloud) -->
-    <!-- 替换 YOUR_WEBSITE_ID 为你的 Umami 网站 ID，替换 umami.example.com 为你的 Umami 实例地址 -->
-    <script defer src="https://umami.example.com/script.js" data-website-id="YOUR_WEBSITE_ID" data-auto-track="false"></script>
+    <!--
+      Analytics (disabled by default).
+      To enable Google Analytics 4: replace G-XXXXXXXXXX with your real measurement ID and uncomment.
+      To enable Umami: replace umami.example.com / YOUR_WEBSITE_ID with your instance, then uncomment.
+      usePageTracking() in src/hooks is defensive — it no-ops while these scripts are absent.
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+      <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX', { send_page_view: false });
+      </script>
+
+      <script defer src="https://umami.example.com/script.js" data-website-id="YOUR_WEBSITE_ID" data-auto-track="false"></script>
+    -->
   </head>
   <body>
     <div id="root"></div>
