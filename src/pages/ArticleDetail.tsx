@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, Children } from 'react';
 import { useParams, Link } from 'react-router';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import gsap from 'gsap';
 import { usePostBySlug } from '@/hooks/useBackend';
 import { useI18n } from '@/i18n/useI18n';
@@ -132,30 +134,38 @@ export default function ArticleDetail() {
           <div className="w-16 h-px bg-border mb-12" />
 
           {/* Article body */}
-          <div className="space-y-8">
-            {post.content.map((paragraph, i) => {
-              if (i === 0) {
-                return (
-                  <p
-                    key={i}
-                    className="font-body text-base md:text-lg leading-[1.8] text-foreground"
-                  >
-                    <span className="float-left font-display text-5xl md:text-6xl leading-[0.8] mr-3 mt-1 text-nocturne-gold">
-                      {paragraph.charAt(0)}
-                    </span>
-                    {paragraph.slice(1)}
-                  </p>
-                );
-              }
+          <div className="prose max-w-none prose-headings:font-display prose-headings:text-foreground prose-p:font-body prose-p:text-base prose-p:leading-[1.8] prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-li:text-foreground prose-a:text-nocturne-gold prose-a:no-underline hover:prose-a:underline prose-code:font-mono prose-code:text-foreground prose-pre:bg-muted prose-blockquote:border-l-nocturne-gold prose-blockquote:text-muted-foreground prose-hr:border-border">
+            {(() => {
+              let isFirst = true;
               return (
-                <p
-                  key={i}
-                  className="font-body text-base md:text-lg leading-[1.8] text-foreground"
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p({ children }) {
+                      if (isFirst) {
+                        isFirst = false;
+                        const arr = Children.toArray(children);
+                        const first = arr[0];
+                        if (typeof first === 'string' && first.length > 0) {
+                          return (
+                            <p className="font-body text-base md:text-lg leading-[1.8] text-foreground">
+                              <span className="float-left font-display text-5xl md:text-6xl leading-[0.8] mr-3 mt-1 text-nocturne-gold">
+                                {first.charAt(0)}
+                              </span>
+                              {first.slice(1)}
+                              {arr.slice(1)}
+                            </p>
+                          );
+                        }
+                      }
+                      return <p className="font-body text-base md:text-lg leading-[1.8] text-foreground">{children}</p>;
+                    },
+                  }}
                 >
-                  {paragraph}
-                </p>
+                  {post.content.join('\n\n')}
+                </ReactMarkdown>
               );
-            })}
+            })()}
           </div>
 
           {/* Footer divider */}

@@ -1,4 +1,4 @@
-import { Routes, Route, Link } from 'react-router';
+import { Routes, Route, Link, Navigate } from 'react-router';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { I18nProvider } from '@/i18n/useI18n';
 import { AdminProvider } from '@/hooks/useAdmin';
@@ -61,6 +61,9 @@ function AppContent() {
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/en" element={<Navigate to="/" replace />} />
+          <Route path="/zh-CN" element={<Navigate to="/" replace />} />
+          <Route path="/zh" element={<Navigate to="/" replace />} />
           <Route path="/articles" element={<Articles />} />
           <Route path="/article/:id" element={<ArticleDetail />} />
           <Route path="/works" element={<Works />} />
