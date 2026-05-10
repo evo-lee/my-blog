@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
@@ -12,22 +13,11 @@ import {
   createLoginChallenge,
   consumeLoginChallenge,
 } from "../sessions";
-
-function setSessionCookie(resHeaders: Headers, token: string) {
-  resHeaders.append(
-    "Set-Cookie",
-    `session=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`
-  );
-}
-
-function getSessionCookie(req: Request): string | null {
-  const cookieHeader = req.headers.get("cookie") || "";
-  const found = cookieHeader
-    .split(";")
-    .map((c) => c.trim())
-    .find((c) => c.startsWith("session="));
-  return found ? found.replace("session=", "") : null;
-}
+import {
+  readSessionCookie,
+  writeSessionCookie,
+  clearSessionCookie,
+} from "../cookies";
 
 export const authRouter = createRouter({
   // ── 检查是否已初始化 ──
@@ -47,17 +37,32 @@ export const authRouter = createRouter({
     )
     .mutation(async ({ input }) => {
       const db = getDb();
-      const existing = await db.select().from(users).limit(1);
-      if (existing.length > 0) {
-        throw new Error("Admin already initialized");
-      }
-
       const hash = await bcrypt.hash(input.password, 12);
-      await db.insert(users).values({
-        username: input.username,
-        passwordHash: hash,
-        isAdmin: true,
-      });
+
+      // Serialize concurrent setups via a transaction so two simultaneous
+      // requests can't both pass the check-then-insert and create two admins.
+      try {
+        db.transaction((tx) => {
+          const existing = tx.select().from(users).limit(1).all();
+          if (existing.length > 0) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Admin already initialized",
+            });
+          }
+          tx.insert(users).values({
+            username: input.username,
+            passwordHash: hash,
+            isAdmin: true,
+          }).run();
+        });
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to initialize admin",
+        });
+      }
 
       return { success: true };
     }),
@@ -79,13 +84,19 @@ export const authRouter = createRouter({
         .limit(1);
 
       if (result.length === 0) {
-        throw new Error("Invalid username or password");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid username or password",
+        });
       }
 
       const user = result[0];
       const valid = await bcrypt.compare(input.password, user.passwordHash);
       if (!valid) {
-        throw new Error("Invalid username or password");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid username or password",
+        });
       }
 
       // 启用 2FA：签发短时挑战 token，等待 step2 提交 TOTP 验证码
@@ -100,7 +111,7 @@ export const authRouter = createRouter({
 
       // 无 2FA：直接签发 session + 写 cookie
       const token = await createSession(user.id);
-      setSessionCookie(ctx.resHeaders, token);
+      writeSessionCookie(ctx.resHeaders, token);
 
       return {
         success: true,
@@ -120,7 +131,10 @@ export const authRouter = createRouter({
     .mutation(async ({ input, ctx }) => {
       const challenge = await consumeLoginChallenge(input.tempToken);
       if (!challenge) {
-        throw new Error("Invalid or expired challenge");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid or expired challenge",
+        });
       }
 
       const db = getDb();
@@ -131,7 +145,10 @@ export const authRouter = createRouter({
         .limit(1);
 
       if (result.length === 0 || !result[0].totpSecret) {
-        throw new Error("2FA not configured");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "2FA not configured",
+        });
       }
 
       const verified = speakeasy.totp.verify({
@@ -142,11 +159,14 @@ export const authRouter = createRouter({
       });
 
       if (!verified) {
-        throw new Error("Invalid 2FA code");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid 2FA code",
+        });
       }
 
       const token = await createSession(challenge.userId);
-      setSessionCookie(ctx.resHeaders, token);
+      writeSessionCookie(ctx.resHeaders, token);
 
       return {
         success: true,
@@ -154,7 +174,7 @@ export const authRouter = createRouter({
       };
     }),
 
-  // ── 设置 2FA（生成 QR 码）──
+  // ── 设置 2FA：把秘钥存为 pending，等 verify2FA 成功后再正式启用 ──
   setup2FA: adminQuery.mutation(async ({ ctx }) => {
     const secret = speakeasy.generateSecret({
       name: `Lee's Blog (${ctx.user.username})`,
@@ -164,7 +184,7 @@ export const authRouter = createRouter({
     const db = getDb();
     await db
       .update(users)
-      .set({ totpSecret: secret.base32 })
+      .set({ pendingTotpSecret: secret.base32 })
       .where(eq(users.id, ctx.user.id));
 
     const qrUrl = await QRCode.toDataURL(secret.otpauth_url || "");
@@ -175,7 +195,7 @@ export const authRouter = createRouter({
     };
   }),
 
-  // ── 验证并启用 2FA ──
+  // ── 验证 pending TOTP，并把它正式启用 ──
   verify2FA: adminQuery
     .input(z.object({ code: z.string().length(6) }))
     .mutation(async ({ input, ctx }) => {
@@ -186,23 +206,48 @@ export const authRouter = createRouter({
         .where(eq(users.id, ctx.user.id))
         .limit(1);
 
-      if (result.length === 0 || !result[0].totpSecret) {
-        throw new Error("2FA not configured");
+      if (result.length === 0 || !result[0].pendingTotpSecret) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No pending 2FA — call setup2FA first",
+        });
       }
 
       const verified = speakeasy.totp.verify({
-        secret: result[0].totpSecret,
+        secret: result[0].pendingTotpSecret,
         encoding: "base32",
         token: input.code,
         window: 2,
       });
 
       if (!verified) {
-        throw new Error("Invalid 2FA code");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid 2FA code",
+        });
       }
+
+      // Promote pending → active
+      await db
+        .update(users)
+        .set({
+          totpSecret: result[0].pendingTotpSecret,
+          pendingTotpSecret: null,
+        })
+        .where(eq(users.id, ctx.user.id));
 
       return { success: true };
     }),
+
+  // ── 取消 pending 2FA setup ──
+  cancel2FASetup: adminQuery.mutation(async ({ ctx }) => {
+    const db = getDb();
+    await db
+      .update(users)
+      .set({ pendingTotpSecret: null })
+      .where(eq(users.id, ctx.user.id));
+    return { success: true };
+  }),
 
   // ── 获取当前用户 ──
   me: publicQuery.query(async ({ ctx }) => {
@@ -256,12 +301,9 @@ export const authRouter = createRouter({
 
   // ── 登出（DB 删 session + 清除 cookie）──
   logout: publicQuery.mutation(async ({ ctx }) => {
-    const token = getSessionCookie(ctx.req);
+    const token = readSessionCookie(ctx.req);
     if (token) await deleteSession(token);
-    ctx.resHeaders.append(
-      "Set-Cookie",
-      "session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax"
-    );
+    clearSessionCookie(ctx.resHeaders);
     return { success: true };
   }),
 });

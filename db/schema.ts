@@ -10,7 +10,11 @@ export const users = sqliteTable("users", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
   username: text("username", { length: 50 }).notNull().unique(),
   passwordHash: text("password_hash", { length: 255 }).notNull(),
-  totpSecret: text("totp_secret", { length: 255 }),       // 2FA 密钥
+  // verified 2FA secret — login enforces TOTP iff this is set
+  totpSecret: text("totp_secret", { length: 255 }),
+  // pending 2FA secret — written by setup2FA, promoted to totpSecret only
+  // after verify2FA succeeds. Lets the user re-scan or abort safely.
+  pendingTotpSecret: text("pending_totp_secret", { length: 255 }),
   apiKey: text("api_key", { length: 255 }).unique(),     // CLI 发布用
   isAdmin: integer("is_admin", { mode: "boolean" }).default(true),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
