@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router';
 import { trpc } from '@/providers/trpc';
 import { useAdmin } from '@/hooks/useAdmin';
 import { SEO } from '@/components/SEO';
+import { getArticleWordCount } from '@/utils/wordCount';
 import { ArrowLeft, Plus, Minus, Save, Loader2 } from 'lucide-react';
 
 export default function AdminEditPost() {
@@ -84,7 +85,7 @@ export default function AdminEditPost() {
 
     setIsSubmitting(true);
     const content = paragraphs.filter((p) => p.trim());
-    const wordCount = content.join(' ').split(/\s+/).length;
+    const wordCount = getArticleWordCount(content);
 
     updateMutation.mutate({
       id: postId,

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { trpc } from '@/providers/trpc';
 import { useAdmin } from '@/hooks/useAdmin';
 import { SEO } from '@/components/SEO';
+import { getArticleWordCount } from '@/utils/wordCount';
 import { ArrowLeft, Plus, Minus } from 'lucide-react';
 
 export default function AdminNewPost() {
@@ -13,7 +14,7 @@ export default function AdminNewPost() {
   const [slug, setSlug] = useState('');
   const [category, setCategory] = useState('LITERATURE');
   const [excerpt, setExcerpt] = useState('');
-  const [coverImage, setCoverImage] = useState('/images/post-new.jpg');
+  const [coverImage, setCoverImage] = useState('');
   const [publishedDate, setPublishedDate] = useState(
     new Date().toISOString().split('T')[0].replace(/-/g, '.')
   );
@@ -40,7 +41,7 @@ export default function AdminNewPost() {
 
     setIsSubmitting(true);
     const content = paragraphs.filter((p) => p.trim());
-    const wordCount = content.join(' ').split(/\s+/).length;
+    const wordCount = getArticleWordCount(content);
 
     createMutation.mutate({
       slug: slug.trim(),

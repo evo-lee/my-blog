@@ -14,7 +14,10 @@ interface SEOProps {
   lang?: string;
 }
 
-const SITE_URL = 'https://cnwr4i2bpug3w.ok.kimi.link';
+// Use the live origin so canonical/OG/JSON-LD URLs match wherever the app
+// is deployed (localhost, staging, production). SSR-safe fallback is empty
+// — tags will be relative-only on the server-render path until hydration.
+const SITE_URL = typeof window !== 'undefined' ? window.location.origin : '';
 const DEFAULT_IMAGE = `${SITE_URL}/images/hero.jpg`;
 const DEFAULT_DESCRIPTION = "Thoughts on literature, design, and the quiet spaces in between. A personal blog by Evo Lee.";
 
@@ -95,6 +98,11 @@ export function ArticleJSONLD({
   author?: string;
   wordCount?: number;
 }) {
+  const datePublishedISO = formatISODate(datePublished);
+  const dateModifiedISO = dateModified
+    ? formatISODate(dateModified)
+    : datePublishedISO;
+
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
@@ -102,8 +110,8 @@ export function ArticleJSONLD({
     description,
     image,
     url: `${SITE_URL}${url}`,
-    datePublished: formatISODate(datePublished),
-    dateModified: dateModified ? formatISODate(dateModified) : formatISODate(datePublished),
+    ...(datePublishedISO ? { datePublished: datePublishedISO } : {}),
+    ...(dateModifiedISO ? { dateModified: dateModifiedISO } : {}),
     author: {
       '@type': 'Person',
       name: author,
@@ -160,8 +168,16 @@ export function PersonJSONLD() {
   );
 }
 
-function formatISODate(dateStr: string): string {
-  // Convert "2026.04.12" to "2026-04-12T00:00:00+08:00"
-  const cleaned = dateStr.replace(/\./g, '-');
+// Convert "2026.04.12" or "2026-04-12" to ISO 8601 with +08:00 offset.
+// Returns undefined for empty / malformed input so callers can omit the
+// JSON-LD field instead of emitting `T00:00:00+08:00` or `2026-04-12T00:00:00+08:00Z`.
+function formatISODate(dateStr: string): string | undefined {
+  if (!dateStr) return undefined;
+  const trimmed = dateStr.trim();
+  // Already an ISO datetime — pass through.
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return trimmed;
+  // YYYY.MM.DD or YYYY-MM-DD → add midnight in CST.
+  const cleaned = trimmed.replace(/\./g, '-');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return undefined;
   return `${cleaned}T00:00:00+08:00`;
 }

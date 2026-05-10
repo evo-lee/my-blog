@@ -56,13 +56,20 @@ export default function ArticleDetail() {
 
   const wordCount = getArticleWordCount(post.content);
 
+  // Use a relative path; SEO/ArticleJSONLD prefix it with the live origin.
+  // Falling back to undefined lets <SEO/> emit its DEFAULT_IMAGE instead of
+  // a nonsense URL like ".../article/null".
+  const articleImage = post.coverImage
+    ? (post.coverImage.startsWith('http') ? post.coverImage : `${window.location.origin}${post.coverImage}`)
+    : undefined;
+
   return (
     <>
       <SEO
         title={post.title}
         description={post.excerpt || ''}
         keywords={`${post.category.toLowerCase()}, blog, Evo Lee`}
-        image={`https://cnwr4i2bpug3w.ok.kimi.link${post.coverImage}`}
+        image={articleImage}
         url={`/article/${post.slug}`}
         type="article"
         author="Evo Lee"
@@ -73,7 +80,7 @@ export default function ArticleDetail() {
         title={post.title}
         description={post.excerpt || ''}
         url={`/article/${post.slug}`}
-        image={`https://cnwr4i2bpug3w.ok.kimi.link${post.coverImage}`}
+        image={articleImage ?? `${window.location.origin}/images/hero.jpg`}
         datePublished={post.publishedDate || ''}
         wordCount={wordCount}
       />
