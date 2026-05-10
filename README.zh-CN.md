@@ -38,10 +38,10 @@ npm run dev
 
 所有变量都是**可选**的。默认 SQLite 路径在本地开发和大多数部署环境下都能用。会话存在数据库里（DB-backed），没有 JWT 密钥需要管理。
 
-| 变量             | 必填 | 说明                                                            |
-| -------------- | -- | ------------------------------------------------------------- |
-| `DATABASE_URL` | 否  | 覆盖 SQLite 路径。默认 `./blog.db`。持久化卷场景可用 `/data/blog.db` 之类。      |
-| `PORT`         | 否  | 生产监听端口。默认 `3000`。                                             |
+| 变量             | 必填 | 说明                                                       |
+| -------------- | -- | -------------------------------------------------------- |
+| `DATABASE_URL` | 否  | 覆盖 SQLite 路径。默认 `./blog.db`。持久化卷场景可用 `/data/blog.db` 之类。 |
+| `PORT`         | 否  | 生产监听端口。默认 `3000`。                                        |
 
 ---
 
@@ -68,31 +68,35 @@ npm run db:push      # drizzle-kit push（直接同步 schema，仅开发）
 
 ### 目录布局
 
-| 路径           | 用途                                                                                                                                                                                                                      |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/`       | React SPA。`App.tsx` 是路由表，页面在 `pages/`，区块在 `sections/`，shadcn 组件在 `components/ui/`，Provider 在 `providers/`，Hook 在 `hooks/`，i18n 在 `i18n/`。                                                                               |
-| `api/`       | Hono 服务端。`boot.ts` 挂载 `/api/trpc/*` 与 `/api/publish`；`router.ts` 组合 `post`、`work`、`auth` 子路由；`middleware.ts` 定义 `publicQuery` / `authedQuery` / `adminQuery`；`sessions.ts` 负责签发／验证／撤销 DB session 与 2FA 登录挑战；`context.ts` 从 session cookie 或 `x-api-key` 解析用户。 |
-| `contracts/` | 客户端与服务端共享的类型与错误码。通过 `@contracts/*` 导入。                                                                                                                                                                                  |
-| `db/`        | Drizzle schema（`schema.ts`）、`relations.ts`、`seed.ts`、生成的 `migrations/`。通过 `@db/*` 或 `db/*` 导入。                                                                                                                          |
-| `scripts/`   | `publish.ts` —— 用 `X-API-Key` 发布 Markdown 文章的 Node CLI。                                                                                                                                                                 |
-| `public/`    | 静态资源，根路径直接对外。                                                                                                                                                                                                           |
-| `dist/`      | 构建产物。`dist/public/` 是客户端，`dist/boot.js` 是打包后的服务端。                                                                                                                                                                       |
+| 路径           | 用途                                                                                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/`       | React SPA。`App.tsx` 是路由表，页面在 `pages/`，区块在 `sections/`，shadcn 组件在 `components/ui/`，Provider 在 `providers/`，Hook 在 `hooks/`，i18n 在 `i18n/`。                                                                                                                     |
+| `api/`       | Hono 服务端。`boot.ts` 挂载 `/api/trpc/*` 与 `/api/publish`，并启动时 + 每小时跑一次 `cleanupExpired()`；`router.ts` 组合 `post`、`work`、`auth` 子路由；`middleware.ts` 定义 `publicQuery` / `authedQuery` / `adminQuery`；`sessions.ts` 负责签发／验证／撤销 DB session 与 2FA 登录挑战；`cookies.ts` 是共享的 session cookie 工具（HttpOnly、SameSite=Lax、生产环境自动加 Secure）；`context.ts` 从 session cookie 或 `x-api-key` 解析 `user` + `authMethod`。 |
+| `db/`        | Drizzle schema（`schema.ts`）、`relations.ts`、`seed.ts`、生成的 `migrations/`。通过 `@db/*` 或 `db/*` 导入。                                                                                                                                                                |
+| `scripts/`   | `publish.ts` —— 用 `X-API-Key` 发布 Markdown 文章的 Node CLI。                                                                                                                                                                                                       |
+| `public/`    | 静态资源，根路径直接对外。                                                                                                                                                                                                                                                 |
+| `dist/`      | 构建产物。`dist/public/` 是客户端，`dist/boot.js` 是打包后的服务端。                                                                                                                                                                                                             |
 
 ### 路径别名
 
 `vite.config.ts` 与 `tsconfig.json` 一致：
 
 - `@/*` → `src/*`
-- `@contracts/*` → `contracts/*`
 - `@db/*` 与 `db/*` → `db/*`
 
 ### 数据
 
-SQLite，驱动是 `better-sqlite3`。表：`users`、`sessions`、`login_challenges`、`posts`、`works`、`work_details`、`work_tags`。`posts.content` 与 `work_details.content` 以「段落字符串数组」形式 JSON 序列化后存入。API 请求体上限 50 MB（见 `api/boot.ts`）。
+SQLite，驱动是 `better-sqlite3`。表：`users`、`sessions`、`login_challenges`、`posts`、`works`、`work_details`、`work_tags`。`users` 同时持有 `totp_secret`（已验证）和 `pending_totp_secret`（`setup2FA` 写入，`verify2FA` 成功后才晋升）。`posts.content` 与 `work_details.content` 以「段落字符串数组」形式 JSON 序列化后存入 —— `api/routers/post.ts` 里的 `parseContent` 在行损坏时返回 `[]`，避免单条坏数据搞挂整个请求。API 请求体上限 50 MB（见 `api/boot.ts`）。
 
 ### 鉴权
 
-DB session，无 JWT。Cookie 持有 32 字节随机 token，DB 里只存 token 的 SHA-256 哈希（`sessions` 表，7 天 TTL）。登出会真正 `DELETE` 该行，撤销立即生效。2FA 流程用独立的 `login_challenges` 表（5 分钟 TTL，单次消费）衔接 step 1 → step 2。CLI 走另一条路：`x-api-key` 请求头匹配 `users.api_key`。目前没有单独的管理员角色 —— 任何注册用户都被视为管理员（见 `CLAUDE.md` 中的 TODO）。
+DB session，无 JWT。Cookie 持有 32 字节随机 token，DB 里只存 token 的 SHA-256 哈希（`sessions` 表，7 天 TTL，`HttpOnly`、`SameSite=Lax`，生产环境自动加 `Secure`）。登出会真正 `DELETE` 该行，撤销立即生效。2FA 登录流程用独立的 `login_challenges` 表（5 分钟 TTL，单次消费）衔接 step 1 → step 2。CLI 用 `x-api-key` 请求头匹配 `users.api_key`。
+
+`authedQuery` 接受 session cookie 或 API key 两种鉴权方式。**`adminQuery` 只接受 session cookie，对 API-key 鉴权直接 403**——CLI 发布密钥泄露也无法删除文章、轮换密钥或修改 2FA。鉴权方式通过 `ctx.authMethod`（`"session"` 或 `"apikey"`）暴露。
+
+2FA 启用走 pending → active：`setup2FA` 把秘钥写入 `users.pending_totp_secret`；`verify2FA` 验证 TOTP 后才晋升到 `users.totp_secret`；`cancel2FASetup` 清空 pending。中途关掉 QR 页不会再把账号锁死。
+
+目前没有单独的管理员角色 —— 任何注册用户都被视为管理员（单管理员博客够用，多用户场景见 `CLAUDE.md` 里的 TODO）。
 
 ### 首次启动流程
 
@@ -102,7 +106,7 @@ DB session，无 JWT。Cookie 持有 32 字节随机 token，DB 里只存 token 
 
 ## 测试
 
-`vitest` 已通过 `npm test` 与 `vitest.config.ts` 接好了，但目前仓库里**还没有任何 ************`*.test.ts`************ 文件**。新增的测试放到 `src/`、`api/` 或顶层 `__tests__/` 都会被 vitest 自动发现。
+`vitest` 已通过 `npm test` 与 `vitest.config.ts` 接好了，但目前仓库里**还没有任何 ****************`*.test.ts`**************** 文件**。新增的测试放到 `src/`、`api/` 或顶层 `__tests__/` 都会被 vitest 自动发现。
 
 跑单个文件：
 

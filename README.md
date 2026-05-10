@@ -72,8 +72,7 @@ In dev, a single Vite process serves the client AND mounts the Hono API via `@ho
 | Path         | Purpose                                                                                                                                                                                                                                                                                                                                              |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/`       | React SPA. `App.tsx` route table, pages in `pages/`, sections in `sections/`, shadcn in `components/ui/`, providers in `providers/`, hooks in `hooks/`, i18n in `i18n/`.                                                                                                                                                                             |
-| `api/`       | Hono server. `boot.ts` mounts `/api/trpc/*` and `/api/publish`. `router.ts` composes `post`, `work`, `auth` routers. `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery`. `sessions.ts` issues / verifies / revokes DB-backed sessions and 2FA login challenges. `context.ts` resolves the user from session cookie or `x-api-key`. |
-| `contracts/` | Shared types and error codes for client + server. Imported via `@contracts/*`.                                                                                                                                                                                                                                                                       |
+| `api/`       | Hono server. `boot.ts` mounts `/api/trpc/*` + `/api/publish` and runs `cleanupExpired()` hourly. `router.ts` composes `post`, `work`, `auth` routers. `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery`. `sessions.ts` issues / verifies / revokes DB-backed sessions and 2FA login challenges. `cookies.ts` is the shared session-cookie helper (HttpOnly, SameSite=Lax, Secure-in-prod). `context.ts` resolves `user` + `authMethod` from session cookie or `x-api-key`. |
 | `db/`        | Drizzle schema (`schema.ts`), `relations.ts`, `seed.ts`, generated `migrations/`. Imported via `@db/*` or plain `db/*`.                                                                                                                                                                                                                              |
 | `scripts/`   | `publish.ts` — Node CLI for publishing Markdown articles via `X-API-Key`.                                                                                                                                                                                                                                                                            |
 | `public/`    | Static assets served at the root.                                                                                                                                                                                                                                                                                                                    |
@@ -84,16 +83,21 @@ In dev, a single Vite process serves the client AND mounts the Hono API via `@ho
 `vite.config.ts` and `tsconfig.json` agree on:
 
 - `@/*` → `src/*`
-- `@contracts/*` → `contracts/*`
 - `@db/*` and `db/*` → `db/*`
 
 ### Data
 
-SQLite via `better-sqlite3`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `works`, `work_details`, `work_tags`. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays. Body limit on the API is 50 MB (`api/boot.ts`).
+SQLite via `better-sqlite3`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `works`, `work_details`, `work_tags`. `users` carries both `totp_secret` (verified) and `pending_totp_secret` (written by `setup2FA`, promoted on `verify2FA`). `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays — `parseContent` in `api/routers/post.ts` returns `[]` on corrupt rows so a bad row can't crash a request. Body limit on the API is 50 MB (`api/boot.ts`).
 
 ### Auth
 
-DB-backed sessions, no JWT. The cookie holds an opaque 32-byte random token; the DB stores its SHA-256 hash in the `sessions` table (7-day TTL). Logout `DELETE`s the row, so revocation is real. The 2FA flow uses a separate `login_challenges` table (5-minute TTL, single-use) to bridge step 1 → step 2. The CLI uses an alternative `x-api-key` header matched against `users.api_key`. Every registered user is treated as admin today (see TODO in `CLAUDE.md`).
+DB-backed sessions, no JWT. The cookie holds an opaque 32-byte random token; the DB stores its SHA-256 hash in the `sessions` table (7-day TTL, `HttpOnly`, `SameSite=Lax`, `Secure` in production). Logout `DELETE`s the row, so revocation is real. The 2FA login flow uses a separate `login_challenges` table (5-minute TTL, single-use) to bridge step 1 → step 2. The CLI uses an `x-api-key` header matched against `users.api_key`.
+
+`authedQuery` accepts either auth method. **`adminQuery` requires session-cookie auth and rejects API-key auth with 403** — a leaked CLI publish key cannot delete posts, rotate keys, or change 2FA. The auth method is exposed as `ctx.authMethod` (`"session"` or `"apikey"`).
+
+2FA setup uses a pending → active pattern: `setup2FA` writes to `users.pending_totp_secret`; `verify2FA` validates and promotes to `users.totp_secret`; `cancel2FASetup` clears the pending value. Closing the QR page mid-setup no longer locks the account.
+
+Every registered user is treated as admin today (single-admin blog). See `CLAUDE.md` for the multi-user TODO.
 
 ### First-run flow
 

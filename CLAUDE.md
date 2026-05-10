@@ -37,26 +37,30 @@ Single Vite process serves both the React client and the Hono API in dev (via `@
 ### Layout
 
 - `src/` — React 19 SPA. `App.tsx` is the route table (react-router v7). Pages in `src/pages/`, layout sections in `src/sections/`, shadcn primitives in `src/components/ui/`, providers in `src/providers/`, hooks in `src/hooks/`, i18n in `src/i18n/`.
-- `api/` — Hono server. `boot.ts` mounts `/api/trpc/*` (tRPC fetch adapter) and `/api/publish` (REST endpoint for the CLI). `router.ts` composes feature routers from `routers/` (`post`, `work`, `auth`). `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery` procedures. `context.ts` builds the per-request `TrpcContext` (resolves `user` from session cookie or `x-api-key` header). `sessions.ts` issues/verifies/revokes DB-backed sessions and 2FA login challenges. `queries/connection.ts` is the singleton Drizzle client. `lib/env.ts` exposes runtime flags (just `isProduction` today).
-- `contracts/` — shared types and error codes consumed by both client and api. Imported via `@contracts/*`.
+- `api/` — Hono server. `boot.ts` mounts `/api/trpc/*` (tRPC fetch adapter) and `/api/publish` (REST endpoint for the CLI), and runs `cleanupExpired()` on startup + hourly. `router.ts` composes feature routers from `routers/` (`post`, `work`, `auth`). `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery` procedures. `context.ts` builds the per-request `TrpcContext` (resolves `user` and `authMethod` from session cookie or `x-api-key` header). `sessions.ts` issues/verifies/revokes DB-backed sessions and 2FA login challenges. `cookies.ts` defines the shared session-cookie helpers (HttpOnly, SameSite=Lax, `Secure` in production, 7-day Max-Age). `lib/words.ts` is the publish-side word-count helper (returns 0 for empty input). `queries/connection.ts` is the singleton Drizzle client. `lib/env.ts` exposes runtime flags (just `isProduction` today).
 - `db/` — Drizzle schema (`schema.ts`), relations (`relations.ts`), seed (`seed.ts`), generated migrations (`migrations/`). Imported via `@db/*` (also aliased as plain `db`).
 - `scripts/publish.ts` — Node CLI that POSTs Markdown articles (with frontmatter) to `/api/publish` using an `X-API-Key`. Reads `~/.leeblog.json` or `LEEBLOG_API_KEY`.
 
 ### Path aliases (`vite.config.ts` + `tsconfig.json`)
 
 - `@/*` → `src/*`
-- `@contracts/*` → `contracts/*`
 - `@db/*` and `db/*` → `db/*`
 
 ### Data
 
-SQLite via `better-sqlite3`. DB file path comes from `DATABASE_URL` (e.g. `sqlite:./blog.db`), default `./blog.db`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `works`, `work_details`, `work_tags`. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays.
+SQLite via `better-sqlite3`. DB file path comes from `DATABASE_URL` (e.g. `sqlite:./blog.db`), default `./blog.db`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `works`, `work_details`, `work_tags`. `users` carries both `totp_secret` (verified) and `pending_totp_secret` (set during `setup2FA`, promoted on `verify2FA`). `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays — the `parseContent` helper in `routers/post.ts` returns `[]` on corrupt rows so a bad row can't crash a request.
 
 ### Auth
 
-DB-backed sessions, **no JWT, no shared secret**. The cookie holds an opaque 32-byte random token; the DB stores its SHA-256 hash in the `sessions` table. 7-day TTL. Logout actually `DELETE`s the row, so revocation is real. The 2FA flow uses a separate short-lived `login_challenges` table (5-min TTL, single-use) to bridge step 1 → step 2. The CLI uses an alternative `x-api-key` header matched against `users.api_key`. `authedQuery` and `adminQuery` both require `ctx.user`; there is no separate admin role check today (every registered user is treated as admin).
+DB-backed sessions, **no JWT, no shared secret**. The cookie holds an opaque 32-byte random token; the DB stores its SHA-256 hash in the `sessions` table. 7-day TTL, `HttpOnly`, `SameSite=Lax`, `Secure` in production. Logout actually `DELETE`s the row, so revocation is real. The 2FA login flow uses a separate short-lived `login_challenges` table (5-min TTL, single-use) to bridge step 1 → step 2. The CLI uses an `x-api-key` header matched against `users.api_key`.
 
-> **TODO (auth-hardening)**: split `adminQuery` from `authedQuery` — add `users.role` column + role check in `api/middleware.ts`. Required before opening public registration.
+`authedQuery` accepts either auth method (session cookie OR API key). **`adminQuery`**** requires session-cookie auth and rejects API-key auth (403).** A leaked CLI publish key cannot delete posts, rotate keys, or change 2FA — admin actions must come from the browser. The auth method is exposed as `ctx.authMethod` (`"session"` or `"apikey"`).
+
+2FA setup is a two-step pending → active dance: `setup2FA` writes the secret to `users.pending_totp_secret`; `verify2FA` checks the TOTP code and promotes pending → `users.totp_secret`; `cancel2FASetup` clears the pending value. Closing the QR page mid-setup no longer locks the account into an unverified TOTP.
+
+There is no separate admin **role** today — every registered user is treated as admin. `SetupGuard` prevents public registration entirely (only the first-visit setup screen creates a user), so this is fine for a single-admin blog.
+
+> **TODO (multi-user)**: if you ever open registration, add `users.role` and a role check in `adminMiddleware`. The auth-method gate is necessary but not sufficient — multiple humans would need real role-based authorization.
 
 ### First-run flow
 
@@ -78,3 +82,4 @@ All optional. `DATABASE_URL` overrides the default SQLite path (`./blog.db`). No
 
 - The first-run setup overlay is **first-visitor-wins** by design (no terminal-based setup token, to keep ephemeral-filesystem deploys workable). Hit the URL immediately after deploying.
 - `info.md` is a leftover scaffolding log from initial shadcn setup; safe to delete, not part of the source.
+
