@@ -1,8 +1,19 @@
 import { z } from "zod";
-import { eq, like, or, desc, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { and, eq, like, or, desc, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { posts } from "@db/schema";
 import { createRouter, publicQuery, adminQuery } from "../middleware";
+
+function parseContent(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export const postRouter = createRouter({
   // 列出已发布文章（支持分页，按时间倒序）
@@ -37,7 +48,7 @@ export const postRouter = createRouter({
       return {
         items: results.map((post) => ({
           ...post,
-          content: JSON.parse(post.content || "[]") as string[],
+          content: parseContent(post.content),
         })),
         total,
         page: input.page,
@@ -46,7 +57,7 @@ export const postRouter = createRouter({
       };
     }),
 
-  // 根据 slug 获取单篇文章
+  // 根据 slug 获取单篇已发布文章
   bySlug: publicQuery
     .input(z.object({ slug: z.string() }))
     .query(async ({ input }) => {
@@ -54,18 +65,18 @@ export const postRouter = createRouter({
       const result = await db
         .select()
         .from(posts)
-        .where(eq(posts.slug, input.slug))
+        .where(and(eq(posts.slug, input.slug), eq(posts.published, true)))
         .limit(1);
 
       if (result.length === 0) return null;
 
       return {
         ...result[0],
-        content: JSON.parse(result[0].content || "[]") as string[],
+        content: parseContent(result[0].content),
       };
     }),
 
-  // 搜索文章
+  // 搜索已发布文章
   search: publicQuery
     .input(z.object({ q: z.string() }))
     .query(async ({ input }) => {
@@ -74,18 +85,21 @@ export const postRouter = createRouter({
         .select()
         .from(posts)
         .where(
-          or(
-            like(posts.title, `%${input.q}%`),
-            like(posts.excerpt, `%${input.q}%`),
-            like(posts.category, `%${input.q}%`),
-            like(posts.publishedDate, `%${input.q}%`)
+          and(
+            eq(posts.published, true),
+            or(
+              like(posts.title, `%${input.q}%`),
+              like(posts.excerpt, `%${input.q}%`),
+              like(posts.category, `%${input.q}%`),
+              like(posts.publishedDate, `%${input.q}%`)
+            )
           )
         )
         .orderBy(desc(posts.createdAt));
 
       return results.map((post) => ({
         ...post,
-        content: JSON.parse(post.content || "[]") as string[],
+        content: parseContent(post.content),
       }));
     }),
 
@@ -118,7 +132,10 @@ export const postRouter = createRouter({
         .limit(1);
 
       if (existing.length > 0) {
-        throw new Error("Slug already exists");
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `Slug '${input.slug}' already exists`,
+        });
       }
 
       const result = await db.insert(posts).values({
@@ -151,7 +168,38 @@ export const postRouter = createRouter({
       const db = getDb();
       const { id, ...data } = input;
 
-      const updateData: Record<string, any> = { ...data };
+      // Preflight: row must exist; if slug is changing, no other row owns it.
+      const existing = await db
+        .select({ id: posts.id, slug: posts.slug })
+        .from(posts)
+        .where(eq(posts.id, id))
+        .limit(1);
+
+      if (existing.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `Post id=${id} not found`,
+        });
+      }
+
+      if (data.slug && data.slug !== existing[0].slug) {
+        const dup = await db
+          .select({ id: posts.id })
+          .from(posts)
+          .where(eq(posts.slug, data.slug))
+          .limit(1);
+        if (dup.length > 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Slug '${data.slug}' already exists`,
+          });
+        }
+      }
+
+      const updateData: Record<string, unknown> = {
+        ...data,
+        updatedAt: new Date(),
+      };
       if (data.content) {
         updateData.content = JSON.stringify(data.content);
       }
@@ -203,5 +251,20 @@ export const postRouter = createRouter({
         perPage: input.perPage,
         totalPages: Math.ceil(total / input.perPage),
       };
+    }),
+
+  // 直接按 id 取单篇（admin 用，不受 published 过滤限制）
+  adminById: adminQuery
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const db = getDb();
+      const result = await db
+        .select()
+        .from(posts)
+        .where(eq(posts.id, input.id))
+        .limit(1);
+
+      if (result.length === 0) return null;
+      return result[0];
     }),
 });

@@ -7,7 +7,9 @@ import { createContext } from "./context";
 import { env } from "./lib/env";
 import { getDb } from "./queries/connection";
 import { users, posts } from "@db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { countWords } from "./lib/words";
+import { cleanupExpired } from "./sessions";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -41,7 +43,13 @@ app.post("/api/publish", async (c) => {
     return c.json({ error: "Invalid API Key" }, 401);
   }
 
-  const body = await c.req.json();
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
   const {
     slug,
     title,
@@ -50,10 +58,18 @@ app.post("/api/publish", async (c) => {
     category = "LITERATURE",
     coverImage = "",
     publishedDate,
-  } = body;
+  } = body as Record<string, unknown>;
 
-  if (!slug || !title || !content || !Array.isArray(content)) {
-    return c.json({ error: "Missing required fields: slug, title, content[]" }, 400);
+  if (
+    typeof slug !== "string" ||
+    typeof title !== "string" ||
+    !Array.isArray(content) ||
+    !content.every((p) => typeof p === "string")
+  ) {
+    return c.json(
+      { error: "Missing or invalid fields: slug (string), title (string), content (string[])" },
+      400
+    );
   }
 
   // Check slug uniqueness
@@ -67,17 +83,15 @@ app.post("/api/publish", async (c) => {
     return c.json({ error: `Slug '${slug}' already exists` }, 409);
   }
 
-  const wordCount = content.join(" ").split(/\s+/).length;
-
   const result = await db.insert(posts).values({
     slug,
     title,
-    excerpt: excerpt || null,
+    excerpt: typeof excerpt === "string" ? excerpt : null,
     content: JSON.stringify(content),
-    category,
-    coverImage: coverImage || null,
-    publishedDate: publishedDate || null,
-    wordCount,
+    category: typeof category === "string" ? category : "LITERATURE",
+    coverImage: typeof coverImage === "string" && coverImage ? coverImage : null,
+    publishedDate: typeof publishedDate === "string" ? publishedDate : null,
+    wordCount: countWords(content),
     published: true,
   });
 
@@ -92,6 +106,15 @@ app.post("/api/publish", async (c) => {
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 
 export default app;
+
+// Sweep expired sessions + login challenges hourly. Cheap (indexed delete);
+// keeps DB tidy in long-running deployments.
+const HOUR_MS = 60 * 60 * 1000;
+const sweep = () => {
+  cleanupExpired().catch((err) => console.error("session cleanup failed:", err));
+};
+sweep();
+setInterval(sweep, HOUR_MS).unref();
 
 if (env.isProduction) {
   const { serve } = await import("@hono/node-server");
