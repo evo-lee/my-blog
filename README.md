@@ -5,7 +5,7 @@ English · [简体中文](./README.zh-CN.md)
 Personal blog by Evo Lee — articles, works, and an admin dashboard. Single Node process serves a React SPA and a tRPC API backed by SQLite.
 
 - **Frontend:** React 19, Vite 7, react-router v7, Tailwind v3 + shadcn/ui, GSAP, Lenis
-- **Backend:** Hono + tRPC v11 (superjson), Drizzle ORM + better-sqlite3, JWT (jose)
+- **Backend:** Hono + tRPC v11 (superjson), Drizzle ORM + better-sqlite3, DB-backed sessions (no JWT, no shared secret)
 - **Build:** Vite for the client, esbuild for the API → `dist/boot.js`
 - **CLI:** `scripts/publish.ts` posts Markdown articles via `X-API-Key`
 
@@ -20,33 +20,29 @@ node -v
 # 2. Install deps. Lockfile is npm — do not switch package managers.
 npm install
 
-# 3. Env file. Defaults work in dev; production requires real values.
-cp .env.example .env
-
-# 4. Initialize the SQLite schema (creates ./blog.db by default).
+# 3. Initialize the SQLite schema (creates ./blog.db by default).
 npm run db:push
 
-# 5. Dev server — Vite + Hono on http://localhost:3000 with HMR for both
+# 4. Dev server — Vite + Hono on http://localhost:3000 with HMR for both
 #    the SPA and api/.
 npm run dev
 ```
 
-First admin: open `/admin/setup` once the server is running and create the
-initial user. After that, `/admin/login` and the `/admin` dashboard work.
+First admin: open `http://localhost:3000` (any path will do). The app detects
+that no admin exists and forces a one-time setup screen — choose a username
+and password, submit, and you land on the home page. After that, `/admin/login`
+gets you back to the dashboard.
 
 ---
 
 ## Environment
 
-`api/lib/env.ts` validates env vars. Missing values fall back to dev defaults; in `NODE_ENV=production` they throw.
+All env vars are **optional**. The default SQLite path works for local dev and most deployments. Sessions are server-side (DB-backed) — there is no JWT secret to manage.
 
-| Variable       | Required prod | Notes                                                                 |
-| -------------- | ------------- | --------------------------------------------------------------------- |
-| `APP_ID`       | yes           | Application ID, surfaced in JWT issuer claim.                         |
-| `APP_SECRET`   | yes           | HS256 JWT secret. Dev fallback exists; **must** be set in production. |
-| `DATABASE_URL` | yes           | `sqlite:./blog.db` for SQLite. Default: `./blog.db`.                  |
-
-Note: `.env.example` currently shows a MySQL connection string for `DATABASE_URL` — the running implementation uses `better-sqlite3` and expects a SQLite path (e.g. `sqlite:./blog.db`).
+| Variable       | Required | Notes                                                                                        |
+| -------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | no       | Override SQLite path. Default: `./blog.db`. For persistent volumes use e.g. `/data/blog.db`. |
+| `PORT`         | no       | Production listen port. Default: `3000`.                                                     |
 
 ---
 
@@ -73,15 +69,15 @@ In dev, a single Vite process serves the client AND mounts the Hono API via `@ho
 
 ### Layout
 
-| Path         | Purpose                                                                                                                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/`       | React SPA. `App.tsx` route table, pages in `pages/`, sections in `sections/`, shadcn in `components/ui/`, providers in `providers/`, hooks in `hooks/`, i18n in `i18n/`.                                                                                                       |
-| `api/`       | Hono server. `boot.ts` mounts `/api/trpc/*` and `/api/publish`. `router.ts` composes `post`, `work`, `auth` routers. `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery` plus JWT helpers. `context.ts` resolves the user from session cookie or `x-api-key`. |
-| `contracts/` | Shared types and error codes for client + server. Imported via `@contracts/*`.                                                                                                                                                                                                 |
-| `db/`        | Drizzle schema (`schema.ts`), `relations.ts`, `seed.ts`, generated `migrations/`. Imported via `@db/*` or plain `db/*`.                                                                                                                                                        |
-| `scripts/`   | `publish.ts` — Node CLI for publishing Markdown articles via `X-API-Key`.                                                                                                                                                                                                      |
-| `public/`    | Static assets served at the root.                                                                                                                                                                                                                                              |
-| `dist/`      | Build output. `dist/public/` = client, `dist/boot.js` = bundled server.                                                                                                                                                                                                        |
+| Path         | Purpose                                                                                                                                                                                                                                                                                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/`       | React SPA. `App.tsx` route table, pages in `pages/`, sections in `sections/`, shadcn in `components/ui/`, providers in `providers/`, hooks in `hooks/`, i18n in `i18n/`.                                                                                                                                                                             |
+| `api/`       | Hono server. `boot.ts` mounts `/api/trpc/*` and `/api/publish`. `router.ts` composes `post`, `work`, `auth` routers. `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery`. `sessions.ts` issues / verifies / revokes DB-backed sessions and 2FA login challenges. `context.ts` resolves the user from session cookie or `x-api-key`. |
+| `contracts/` | Shared types and error codes for client + server. Imported via `@contracts/*`.                                                                                                                                                                                                                                                                       |
+| `db/`        | Drizzle schema (`schema.ts`), `relations.ts`, `seed.ts`, generated `migrations/`. Imported via `@db/*` or plain `db/*`.                                                                                                                                                                                                                              |
+| `scripts/`   | `publish.ts` — Node CLI for publishing Markdown articles via `X-API-Key`.                                                                                                                                                                                                                                                                            |
+| `public/`    | Static assets served at the root.                                                                                                                                                                                                                                                                                                                    |
+| `dist/`      | Build output. `dist/public/` = client, `dist/boot.js` = bundled server.                                                                                                                                                                                                                                                                              |
 
 ### Path aliases
 
@@ -93,11 +89,15 @@ In dev, a single Vite process serves the client AND mounts the Hono API via `@ho
 
 ### Data
 
-SQLite via `better-sqlite3`. Tables: `users`, `posts`, `works`, `work_details`, `work_tags`. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays. Body limit on the API is 50 MB (`api/boot.ts`).
+SQLite via `better-sqlite3`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `works`, `work_details`, `work_tags`. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays. Body limit on the API is 50 MB (`api/boot.ts`).
 
 ### Auth
 
-JWT (HS256) signed with `APP_SECRET`, 7-day expiry. The session lives in a `session=<jwt>` cookie. The CLI uses an alternative `x-api-key` header matched against `users.api_key`. There is no separate admin role today — every registered user is treated as admin (see TODO in `CLAUDE.md`).
+DB-backed sessions, no JWT. The cookie holds an opaque 32-byte random token; the DB stores its SHA-256 hash in the `sessions` table (7-day TTL). Logout `DELETE`s the row, so revocation is real. The 2FA flow uses a separate `login_challenges` table (5-minute TTL, single-use) to bridge step 1 → step 2. The CLI uses an alternative `x-api-key` header matched against `users.api_key`. Every registered user is treated as admin today (see TODO in `CLAUDE.md`).
+
+### First-run flow
+
+`App.tsx` wraps every route in a `SetupGuard`. While no admin exists, **any URL** renders the one-time setup screen. After the admin is created, the guard releases and the user is redirected to `/`. There is no public `/admin/setup` URL.
 
 ---
 
@@ -121,7 +121,7 @@ npm run dev
 curl -s http://localhost:3000/api/trpc/post.list?batch=1\&input=%7B%220%22%3A%7B%22json%22%3A%7B%22page%22%3A1%2C%22perPage%22%3A10%7D%7D%7D
 ```
 
-Pages worth eyeballing: `/`, `/articles`, `/article/:slug`, `/works`, `/works/:slug`, `/about`, `/admin`, `/admin/setup`, `/admin/login`, `/admin/new`.
+Pages worth eyeballing: `/`, `/articles`, `/article/:slug`, `/works`, `/works/:slug`, `/about`, `/admin`, `/admin/login`, `/admin/new`. (The setup screen is a global overlay rendered before any admin exists — it has no dedicated URL.)
 
 ---
 
@@ -155,21 +155,28 @@ Article body must be paragraphs separated by blank lines — the endpoint splits
 
 ```bash
 npm run build
-APP_ID=... APP_SECRET=... DATABASE_URL=sqlite:./blog.db npm start
-# → http://localhost:3000
+npm run db:push          # only on first run, or when schema changes
+npm start                # → http://localhost:3000
 ```
+
+The first visit to the deployed site forces the setup overlay — create the admin account immediately after deploy to avoid leaving the door open.
 
 ### Docker
 
 ```bash
 docker build -t lee-blog .
 docker run --rm -p 3000:3000 \
-  -e APP_ID=... -e APP_SECRET=... -e DATABASE_URL=sqlite:/app/blog.db \
   -v $(pwd)/blog.db:/app/blog.db \
   lee-blog
 ```
 
+For a non-default DB path, mount somewhere else and pass `-e DATABASE_URL=/data/blog.db` (plus a matching volume mount).
+
 The `Dockerfile` uses a Chinese npm mirror (`npm.mirrors.msh.team`) — change or remove that line if you build outside that network.
+
+### Cloudflare Pages / Render / fly.io
+
+Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path (e.g. `/data/blog.db`). Visit the deployed URL right after the first build to claim the admin account before anyone else can.
 
 ---
 
@@ -182,9 +189,9 @@ The `Dockerfile` uses a Chinese npm mirror (`npm.mirrors.msh.team`) — change o
 
 ## Known gotchas
 
-- `tsconfig.json.bak`, `vite.config.ts.bak`, `src/App.tsx.bak`, `src/main.tsx.bak` are local backups — ignore unless asked.
-- `error.log` is a runtime log file; not part of the source.
-- `api/middleware.ts` and `api/context.ts` carry a hard-coded `APP_SECRET` fallback (`lee-blog-jwt-secret-change-me`) for dev. Production must set a real secret. Removing the fallback is tracked alongside auth-hardening (see `CLAUDE.md`).
+- The setup overlay is **first-visitor-wins** by design (no terminal-based token, to keep Cloudflare-style deploys workable). After deploying, hit the URL immediately and claim the admin account.
+- Schema changes need `npm run db:push` against the running SQLite file.
+- The `Dockerfile` defaults to a Chinese npm mirror — adjust if you build outside that network.
 
 ---
 

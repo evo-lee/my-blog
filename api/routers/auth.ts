@@ -5,13 +5,28 @@ import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
-import { createRouter, publicQuery, adminQuery, createSessionToken } from "../middleware";
+import { createRouter, publicQuery, adminQuery } from "../middleware";
+import {
+  createSession,
+  deleteSession,
+  createLoginChallenge,
+  consumeLoginChallenge,
+} from "../sessions";
 
 function setSessionCookie(resHeaders: Headers, token: string) {
   resHeaders.append(
     "Set-Cookie",
     `session=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`
   );
+}
+
+function getSessionCookie(req: Request): string | null {
+  const cookieHeader = req.headers.get("cookie") || "";
+  const found = cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith("session="));
+  return found ? found.replace("session=", "") : null;
 }
 
 export const authRouter = createRouter({
@@ -73,9 +88,9 @@ export const authRouter = createRouter({
         throw new Error("Invalid username or password");
       }
 
-      // 如果已启用 2FA，返回需要 2FA 验证的状态
+      // 启用 2FA：签发短时挑战 token，等待 step2 提交 TOTP 验证码
       if (user.totpSecret) {
-        const tempToken = await createSessionToken(user.id, user.username);
+        const tempToken = await createLoginChallenge(user.id);
         return {
           success: true,
           require2FA: true,
@@ -83,8 +98,8 @@ export const authRouter = createRouter({
         };
       }
 
-      // 没有 2FA，直接签发完整 session + cookie
-      const token = await createSessionToken(user.id, user.username);
+      // 无 2FA：直接签发 session + 写 cookie
+      const token = await createSession(user.id);
       setSessionCookie(ctx.resHeaders, token);
 
       return {
@@ -103,17 +118,16 @@ export const authRouter = createRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { verifySessionToken } = await import("../middleware");
-      const session = await verifySessionToken(input.tempToken);
-      if (!session) {
-        throw new Error("Invalid session");
+      const challenge = await consumeLoginChallenge(input.tempToken);
+      if (!challenge) {
+        throw new Error("Invalid or expired challenge");
       }
 
       const db = getDb();
       const result = await db
         .select()
         .from(users)
-        .where(eq(users.id, session.userId))
+        .where(eq(users.id, challenge.userId))
         .limit(1);
 
       if (result.length === 0 || !result[0].totpSecret) {
@@ -131,12 +145,12 @@ export const authRouter = createRouter({
         throw new Error("Invalid 2FA code");
       }
 
-      const token = await createSessionToken(session.userId, session.username);
+      const token = await createSession(challenge.userId);
       setSessionCookie(ctx.resHeaders, token);
 
       return {
         success: true,
-        user: { id: session.userId, username: session.username },
+        user: { id: result[0].id, username: result[0].username },
       };
     }),
 
@@ -240,8 +254,10 @@ export const authRouter = createRouter({
     return { success: true };
   }),
 
-  // ── 登出（清除 cookie）──
+  // ── 登出（DB 删 session + 清除 cookie）──
   logout: publicQuery.mutation(async ({ ctx }) => {
+    const token = getSessionCookie(ctx.req);
+    if (token) await deleteSession(token);
     ctx.resHeaders.append(
       "Set-Cookie",
       "session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax"

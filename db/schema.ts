@@ -16,6 +16,25 @@ export const users = sqliteTable("users", {
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
 });
 
+// ── Session 表（DB-backed sessions，cookie 持有原始 token，DB 只存 SHA-256 哈希）──
+export const sessions = sqliteTable("sessions", {
+  id: text("id", { length: 64 }).primaryKey(),  // SHA-256(token) hex = 64 chars
+  userId: integer("user_id", { mode: "number" })
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+// ── 2FA 登录挑战表（loginStep1 创建，loginStep2 单次消费）──
+export const loginChallenges = sqliteTable("login_challenges", {
+  id: text("id", { length: 64 }).primaryKey(),
+  userId: integer("user_id", { mode: "number" })
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+});
+
 // ── 文章表 ──
 export const posts = sqliteTable("posts", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),

@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { I18nProvider } from '@/i18n/useI18n';
 import { AdminProvider } from '@/hooks/useAdmin';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import { trpc } from '@/providers/trpc';
 import { SEO } from '@/components/SEO';
 import Header from '@/sections/Header';
 import Hero from '@/sections/Hero';
@@ -53,10 +55,17 @@ function Home() {
   );
 }
 
+function SetupGuard({ children }: { children: ReactNode }) {
+  const { data: setupData, isLoading } = trpc.auth.isSetup.useQuery();
+  if (isLoading) return null;
+  if (setupData?.isSetup) return <AdminSetup />;
+  return <>{children}</>;
+}
+
 function AppContent() {
   usePageTracking();
   return (
-    <>
+    <SetupGuard>
       <Header />
       <main>
         <Routes>
@@ -70,7 +79,6 @@ function AppContent() {
           <Route path="/works/:id" element={<WorkDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/admin" element={<Admin />} />
-          <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/new" element={<AdminNewPost />} />
           <Route path="/admin/edit/:id" element={<AdminEditPost />} />
@@ -78,7 +86,7 @@ function AppContent() {
         </Routes>
       </main>
       <Footer />
-    </>
+    </SetupGuard>
   );
 }
 

@@ -12,8 +12,6 @@ export default function Admin() {
   const [showApiKey, setShowApiKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Check setup status
-  const { data: setupData } = trpc.auth.isSetup.useQuery();
   const { data: me } = trpc.auth.me.useQuery(undefined, {
     enabled: isAdmin,
   });
@@ -42,17 +40,13 @@ export default function Admin() {
     onSuccess: () => refetch(),
   });
 
-  // Redirect: setupData.isSetup === true actually means "no admin yet, needs setup"
   useEffect(() => {
-    if (!setupData) return;
-    if (setupData.isSetup) {
-      navigate('/admin/setup', { replace: true });
-    } else if (!isAdmin) {
+    if (!isAdmin) {
       navigate('/admin/login', { replace: true });
     }
-  }, [setupData, isAdmin, navigate]);
+  }, [isAdmin, navigate]);
 
-  if (!setupData || setupData.isSetup || !isAdmin) {
+  if (!isAdmin) {
     return null;
   }
 

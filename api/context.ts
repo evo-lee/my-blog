@@ -1,12 +1,8 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
-import { jwtVerify } from "jose";
 import { eq } from "drizzle-orm";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.APP_SECRET || "lee-blog-jwt-secret-change-me"
-);
+import { verifySession } from "./sessions";
 
 export type TrpcContext = {
   req: Request;
@@ -20,9 +16,9 @@ export async function createContext(
   const req = opts.req;
   const resHeaders = opts.resHeaders;
 
-  // 1. 尝试从 session cookie 读取 JWT
   let user: { id: number; username: string } | null = null;
 
+  // 1. session cookie → DB lookup
   const cookieHeader = req.headers.get("cookie") || "";
   const sessionCookie = cookieHeader
     .split(";")
@@ -31,20 +27,19 @@ export async function createContext(
 
   if (sessionCookie) {
     const token = sessionCookie.replace("session=", "");
-    try {
-      const { payload } = await jwtVerify(token, JWT_SECRET, { clockTolerance: 60 });
-      if (payload.sub && payload.username) {
-        user = {
-          id: Number(payload.sub),
-          username: String(payload.username),
-        };
-      }
-    } catch {
-      user = null;
+    const session = await verifySession(token);
+    if (session) {
+      const db = getDb();
+      const found = await db
+        .select({ id: users.id, username: users.username })
+        .from(users)
+        .where(eq(users.id, session.userId))
+        .limit(1);
+      if (found.length > 0) user = found[0];
     }
   }
 
-  // 2. 如果没有 session，尝试从 API Key header 验证
+  // 2. fallback: x-api-key header (CLI publish)
   if (!user) {
     const apiKeyHeader = req.headers.get("x-api-key") || "";
     if (apiKeyHeader) {

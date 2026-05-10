@@ -11,9 +11,11 @@ export default function AdminSetup() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const utils = trpc.useUtils();
   const setupMutation = trpc.auth.setup.useMutation({
-    onSuccess: () => {
-      navigate('/admin/login');
+    onSuccess: async () => {
+      await utils.auth.isSetup.invalidate();
+      navigate('/');
     },
     onError: (err) => {
       setError(err.message);

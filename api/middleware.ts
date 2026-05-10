@@ -1,5 +1,4 @@
 import { initTRPC, TRPCError } from "@trpc/server";
-import { SignJWT, jwtVerify } from "jose";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 
@@ -35,29 +34,3 @@ const adminMiddleware = t.middleware(({ ctx, next }) => {
 });
 
 export const adminQuery = t.procedure.use(adminMiddleware);
-
-// ── JWT 工具 ──
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.APP_SECRET || "lee-blog-jwt-secret-change-me"
-);
-
-export async function createSessionToken(userId: number, username: string): Promise<string> {
-  return new SignJWT({ username })
-    .setProtectedHeader({ alg: "HS256" })
-    .setSubject(String(userId))
-    .setIssuedAt()
-    .setExpirationTime("7d")
-    .sign(JWT_SECRET);
-}
-
-export async function verifySessionToken(token: string) {
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, { clockTolerance: 60 });
-    return {
-      userId: Number(payload.sub),
-      username: String(payload.username),
-    };
-  } catch {
-    return null;
-  }
-}
