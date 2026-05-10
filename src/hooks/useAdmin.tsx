@@ -73,14 +73,21 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setUser(userData);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Hit the server FIRST so we know whether the session row was actually
+    // deleted before we wipe local state. If the request fails (offline,
+    // server down), surface it and keep the user logged in — clearing
+    // local state silently while the cookie remains valid is the bug
+    // codex flagged.
+    try {
+      await logoutMutation.mutateAsync();
+    } catch (err) {
+      console.warn('Logout failed; session may still be active server-side', err);
+      throw err;
+    }
     localStorage.removeItem('admin_user');
     setUser(null);
-    logoutMutation.mutate(undefined, {
-      onSettled: () => {
-        utils.auth.me.setData(undefined, null);
-      },
-    });
+    utils.auth.me.setData(undefined, null);
   }, [logoutMutation, utils]);
 
   return (

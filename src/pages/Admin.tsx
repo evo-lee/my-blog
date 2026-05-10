@@ -84,7 +84,14 @@ export default function Admin() {
                 New Post
               </button>
               <button
-                onClick={() => { logout(); navigate('/admin/login'); }}
+                onClick={async () => {
+                  try {
+                    await logout();
+                    navigate('/admin/login');
+                  } catch {
+                    alert('Logout failed — check your connection and try again.');
+                  }
+                }}
                 className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Logout
