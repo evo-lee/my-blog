@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { usePosts } from '@/hooks/useBackend';
+import { usePosts, useSearchPosts } from '@/hooks/useBackend';
 import { useI18n } from '@/i18n/useI18n';
 import { SEO } from '@/components/SEO';
 import { Search, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,10 +11,24 @@ export default function Articles() {
   const [page, setPage] = useState(1);
   const perPage = 6;
 
-  const { data, isLoading } = usePosts(page, perPage);
+  const trimmedQuery = query.trim();
+  const isSearching = trimmedQuery.length > 0;
 
-  const posts = data?.items || [];
-  const totalPages = data?.totalPages || 1;
+  const listQuery = usePosts(page, perPage);
+  const searchQuery = useSearchPosts(trimmedQuery);
+
+  const isLoading = isSearching ? searchQuery.isLoading : listQuery.isLoading;
+  // Search returns the full result set; paginate client-side for parity with list view.
+  const allHits = isSearching ? searchQuery.data ?? [] : [];
+  const total = isSearching ? allHits.length : listQuery.data?.total ?? 0;
+  const totalPages = isSearching
+    ? Math.max(1, Math.ceil(allHits.length / perPage))
+    : listQuery.data?.totalPages ?? 1;
+  const posts = isSearching
+    ? allHits.slice((page - 1) * perPage, page * perPage)
+    : listQuery.data?.items ?? [];
+
+  const hasData = isSearching ? !searchQuery.isLoading : !!listQuery.data;
 
   const articleT = t.articles;
 
@@ -49,9 +63,9 @@ export default function Articles() {
           </div>
 
           {/* Result count */}
-          {!isLoading && data && (
+          {!isLoading && hasData && (
             <p className="font-mono text-xs text-muted-foreground mb-6">
-              {articleT.searchResult.replace('{{count}}', String(data.total))} — {lang === 'zh' ? '第' : 'Page'} {page} / {totalPages}
+              {articleT.searchResult.replace('{{count}}', String(total))} — {lang === 'zh' ? '第' : 'Page'} {page} / {totalPages}
             </p>
           )}
 

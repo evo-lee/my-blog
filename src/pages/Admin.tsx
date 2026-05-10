@@ -7,10 +7,11 @@ import { Plus, Trash2, Edit3, ExternalLink, Copy, Key, Shield, AlertTriangle } f
 
 export default function Admin() {
   const navigate = useNavigate();
-  const { isAdmin, logout } = useAdmin();
+  const { isAdmin, isLoading, logout } = useAdmin();
 
   const [showApiKey, setShowApiKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const { data: me } = trpc.auth.me.useQuery(undefined, {
     enabled: isAdmin,
@@ -41,19 +42,27 @@ export default function Admin() {
   });
 
   useEffect(() => {
+    if (isLoading) return;
     if (!isAdmin) {
       navigate('/admin/login', { replace: true });
     }
-  }, [isAdmin, navigate]);
+  }, [isLoading, isAdmin, navigate]);
 
-  if (!isAdmin) {
+  if (isLoading || !isAdmin) {
     return null;
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setCopyFailed(false);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2500);
+    }
   };
 
   return (
@@ -164,6 +173,9 @@ export default function Admin() {
                   </div>
                   {copied && (
                     <p className="font-mono text-[10px] text-nocturne-gold mt-1">Copied!</p>
+                  )}
+                  {copyFailed && (
+                    <p className="font-mono text-[10px] text-red-400 mt-1">Copy failed — select the text manually.</p>
                   )}
                   <p className="font-mono text-[10px] text-red-400 mt-2">
                     Save this key now — it will not be shown again.

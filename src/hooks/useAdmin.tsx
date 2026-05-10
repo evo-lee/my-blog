@@ -12,7 +12,7 @@ interface AdminContextType {
   user: User | null;
   isLoading: boolean;
   isAdmin: boolean;
-  login: (token: string, user: User) => void;
+  login: (user: User) => void;
   logout: () => void;
 }
 
@@ -68,7 +68,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setUser(fresh);
   }, [meData, isFetched]);
 
-  const login = useCallback((_: string, userData: User) => {
+  const login = useCallback((userData: User) => {
     localStorage.setItem('admin_user', JSON.stringify(userData));
     setUser(userData);
   }, []);

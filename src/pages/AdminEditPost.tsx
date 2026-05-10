@@ -12,13 +12,11 @@ export default function AdminEditPost() {
 
   const postId = Number(id);
 
-  // Load existing post
-  const { data: post, isLoading: isLoadingPost } = trpc.post.adminList.useQuery(
-    { page: 1, perPage: 100 },
+  // Load existing post by id (no list pagination dance)
+  const { data: existingPost, isLoading: isLoadingPost } = trpc.post.adminById.useQuery(
+    { id: postId },
     { enabled: isAdmin && !isNaN(postId) }
   );
-
-  const existingPost = post?.items.find((p) => p.id === postId);
 
   // Form state
   const [title, setTitle] = useState('');

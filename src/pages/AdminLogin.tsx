@@ -21,7 +21,7 @@ export default function AdminLogin() {
         setTempToken(data.tempToken);
         setStep('2fa');
       } else if (data.user) {
-        login('', { ...data.user, apiKey: false, has2FA: false });
+        login({ ...data.user, apiKey: false, has2FA: false });
         navigate('/admin');
       }
     },
@@ -31,7 +31,7 @@ export default function AdminLogin() {
   const step2Mutation = trpc.auth.loginStep2.useMutation({
     onSuccess: (data) => {
       if (data.user) {
-        login('', { ...data.user, apiKey: false, has2FA: true });
+        login({ ...data.user, apiKey: false, has2FA: true });
         navigate('/admin');
       }
     },

@@ -16,10 +16,8 @@ export function TRPCProvider({ children }: { children: ReactNode }) {
         httpBatchLink({
           url: "/api/trpc",
           transformer: superjson,
-          headers() {
-            const token = localStorage.getItem("admin_token");
-            return token ? { Authorization: `Bearer ${token}` } : {};
-          },
+          // Auth is handled by the HttpOnly `session` cookie. No bearer
+          // header is needed (and there's nothing readable from JS anyway).
           fetch(input, init) {
             return globalThis.fetch(input, {
               ...(init ?? {}),
