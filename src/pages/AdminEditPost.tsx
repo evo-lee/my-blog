@@ -1,13 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
-import { trpc } from '@/providers/trpc';
+import { trpc } from '@/providers/trpc-client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { SEO } from '@/components/SEO';
 import { getArticleWordCount } from '@/utils/wordCount';
 import { ArrowLeft, Plus, Minus, Save, Loader2 } from 'lucide-react';
 
+type ExistingPost = {
+  id: number;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  content: string;
+  category: string;
+  coverImage: string | null;
+  publishedDate: string | null;
+  published: boolean | null;
+};
+
+function parseParagraphs(content: string) {
+  try {
+    const parsed = JSON.parse(content || '[]');
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [''];
+  } catch {
+    return [''];
+  }
+}
+
 export default function AdminEditPost() {
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { isAdmin } = useAdmin();
 
@@ -18,42 +38,6 @@ export default function AdminEditPost() {
     { id: postId },
     { enabled: isAdmin && !isNaN(postId) }
   );
-
-  // Form state
-  const [title, setTitle] = useState('');
-  const [slug, setSlug] = useState('');
-  const [category, setCategory] = useState('LITERATURE');
-  const [excerpt, setExcerpt] = useState('');
-  const [coverImage, setCoverImage] = useState('');
-  const [publishedDate, setPublishedDate] = useState('');
-  const [published, setPublished] = useState(true);
-  const [paragraphs, setParagraphs] = useState(['']);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Populate form when post loads
-  useEffect(() => {
-    if (existingPost) {
-      setTitle(existingPost.title);
-      setSlug(existingPost.slug);
-      setCategory(existingPost.category);
-      setExcerpt(existingPost.excerpt || '');
-      setCoverImage(existingPost.coverImage || '');
-      setPublishedDate(existingPost.publishedDate || '');
-      setPublished(existingPost.published ?? true);
-      try {
-        const parsed = JSON.parse(existingPost.content || '[]');
-        setParagraphs(Array.isArray(parsed) && parsed.length > 0 ? parsed : ['']);
-      } catch {
-        setParagraphs(['']);
-      }
-    }
-  }, [existingPost]);
-
-  const updateMutation = trpc.post.update.useMutation({
-    onSuccess: () => {
-      navigate('/admin');
-    },
-  });
 
   if (!isAdmin) {
     return (
@@ -78,6 +62,33 @@ export default function AdminEditPost() {
       </div>
     );
   }
+
+  return <AdminEditPostForm key={existingPost.id} post={existingPost} postId={postId} />;
+}
+
+function AdminEditPostForm({
+  post,
+  postId,
+}: {
+  post: ExistingPost;
+  postId: number;
+}) {
+  const navigate = useNavigate();
+  const [title, setTitle] = useState(post.title);
+  const [slug, setSlug] = useState(post.slug);
+  const [category, setCategory] = useState(post.category);
+  const [excerpt, setExcerpt] = useState(post.excerpt || '');
+  const [coverImage, setCoverImage] = useState(post.coverImage || '');
+  const [publishedDate, setPublishedDate] = useState(post.publishedDate || '');
+  const [published, setPublished] = useState(post.published ?? true);
+  const [paragraphs, setParagraphs] = useState(() => parseParagraphs(post.content));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const updateMutation = trpc.post.update.useMutation({
+    onSuccess: () => {
+      navigate('/admin');
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

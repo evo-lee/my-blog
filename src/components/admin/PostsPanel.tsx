@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { trpc } from '@/providers/trpc';
+import { trpc } from '@/providers/trpc-client';
 import { ConfirmButton } from '@/components/admin/ConfirmButton';
 import { Trash2, Edit3, ExternalLink } from 'lucide-react';
 

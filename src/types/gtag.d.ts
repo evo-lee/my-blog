@@ -2,7 +2,7 @@ interface Window {
   gtag: (
     command: string,
     target: string,
-    config?: Record<string, any>
+    config?: Record<string, unknown>
   ) => void;
-  dataLayer: any[];
+  dataLayer: unknown[];
 }

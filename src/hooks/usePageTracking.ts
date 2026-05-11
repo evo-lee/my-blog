@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router';
 
+type UmamiTracker = {
+  track?: (payload: { url: string; referrer: string }) => void;
+};
+
 // Google Analytics 4 SPA page tracking
 function trackGA4PageView(path: string, title: string) {
   if (typeof window.gtag === 'function') {
@@ -14,7 +18,7 @@ function trackGA4PageView(path: string, title: string) {
 
 // Umami SPA page tracking
 function trackUmamiPageView(path: string) {
-  const umami = (window as any).umami;
+  const umami = (window as Window & { umami?: UmamiTracker }).umami;
   if (typeof umami?.track === 'function') {
     umami.track({
       url: path,

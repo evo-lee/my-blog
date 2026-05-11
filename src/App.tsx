@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router';
-import { ThemeProvider } from '@/hooks/useTheme';
-import { I18nProvider } from '@/i18n/useI18n';
-import { AdminProvider } from '@/hooks/useAdmin';
+import { ThemeProvider } from '@/hooks/ThemeProvider';
+import { I18nProvider } from '@/i18n/I18nProvider';
+import { AdminProvider } from '@/hooks/AdminProvider';
 import { usePageTracking } from '@/hooks/usePageTracking';
-import { trpc } from '@/providers/trpc';
+import { trpc } from '@/providers/trpc-client';
 import { SEO } from '@/components/SEO';
 import Header from '@/sections/Header';
 import Hero from '@/sections/Hero';

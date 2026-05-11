@@ -1,4 +1,4 @@
-import { trpc } from "@/providers/trpc";
+import { trpc } from "@/providers/trpc-client";
 
 // 文章列表（支持分页）
 export function usePosts(page = 1, perPage = 6) {

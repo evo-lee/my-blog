@@ -1,28 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { trpc } from '@/providers/trpc';
-
-interface User {
-  id: number;
-  username: string;
-  apiKey: boolean;
-  has2FA: boolean;
-}
-
-interface AdminContextType {
-  user: User | null;
-  isLoading: boolean;
-  isAdmin: boolean;
-  login: (user: User) => void;
-  logout: () => void;
-}
-
-const AdminContext = createContext<AdminContextType>({
-  user: null,
-  isLoading: true,
-  isAdmin: false,
-  login: () => {},
-  logout: () => {},
-});
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { trpc } from '@/providers/trpc-client';
+import { AdminContext, type User } from '@/hooks/admin-context';
 
 function readCachedUser(): User | null {
   if (typeof window === 'undefined') return null;
@@ -36,9 +14,23 @@ function readCachedUser(): User | null {
   }
 }
 
+function toUser(meData: {
+  id: number;
+  username: string;
+  apiKey?: boolean | null;
+  has2FA?: boolean | null;
+}): User {
+  return {
+    id: meData.id,
+    username: meData.username,
+    apiKey: !!meData.apiKey,
+    has2FA: !!meData.has2FA,
+  };
+}
+
 export function AdminProvider({ children }: { children: ReactNode }) {
   // Optimistic init from localStorage so the UI doesn't flash logged-out on every refresh.
-  const [user, setUser] = useState<User | null>(readCachedUser);
+  const [cachedUser, setCachedUser] = useState<User | null>(readCachedUser);
 
   // Authoritative check: ask the server "am I logged in?" — the cookie is HttpOnly,
   // so only the server knows. This reconciles localStorage with reality after login,
@@ -51,27 +43,23 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   });
   const logoutMutation = trpc.auth.logout.useMutation();
 
+  const serverUser = meData ? toUser(meData) : null;
+  const user = isFetched ? serverUser : cachedUser;
+
   useEffect(() => {
     if (!isFetched) return;
-    if (!meData) {
+    if (!serverUser) {
       localStorage.removeItem('admin_user');
-      setUser(null);
       return;
     }
-    const fresh: User = {
-      id: meData.id,
-      username: meData.username,
-      apiKey: !!meData.apiKey,
-      has2FA: !!meData.has2FA,
-    };
-    localStorage.setItem('admin_user', JSON.stringify(fresh));
-    setUser(fresh);
-  }, [meData, isFetched]);
+    localStorage.setItem('admin_user', JSON.stringify(serverUser));
+  }, [isFetched, serverUser]);
 
   const login = useCallback((userData: User) => {
     localStorage.setItem('admin_user', JSON.stringify(userData));
-    setUser(userData);
-  }, []);
+    setCachedUser(userData);
+    utils.auth.me.setData(undefined, userData);
+  }, [utils]);
 
   const logout = useCallback(async () => {
     // Hit the server FIRST so we know whether the session row was actually
@@ -86,7 +74,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       throw err;
     }
     localStorage.removeItem('admin_user');
-    setUser(null);
+    setCachedUser(null);
     utils.auth.me.setData(undefined, null);
   }, [logoutMutation, utils]);
 
@@ -95,8 +83,4 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       {children}
     </AdminContext.Provider>
   );
-}
-
-export function useAdmin() {
-  return useContext(AdminContext);
 }

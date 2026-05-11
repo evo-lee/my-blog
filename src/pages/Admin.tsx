@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { trpc } from '@/providers/trpc';
+import { trpc } from '@/providers/trpc-client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { SEO } from '@/components/SEO';
 import SecurityPanel from '@/components/admin/SecurityPanel';

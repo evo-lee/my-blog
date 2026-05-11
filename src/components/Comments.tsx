@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { trpc } from '@/providers/trpc';
+import { trpc } from '@/providers/trpc-client';
 import { useI18n } from '@/i18n/useI18n';
 import { useAdmin } from '@/hooks/useAdmin';
 import { formatCommentDate } from '@/lib/formatDate';

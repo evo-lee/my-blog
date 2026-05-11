@@ -1,4 +1,4 @@
-import { trpc } from '@/providers/trpc';
+import { trpc } from '@/providers/trpc-client';
 import { useI18n } from '@/i18n/useI18n';
 import { SITE_DEFAULTS } from '@db/site-defaults';
 
