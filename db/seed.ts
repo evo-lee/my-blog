@@ -2,10 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { posts, works, workDetails, workTags } from "./schema";
 
-const client = new Database("./blog.db");
-const db = drizzle(client);
-
-const seedData = {
+export const seedData = {
   posts: [
     {
       slug: "silence-in-fiction",
@@ -197,6 +194,9 @@ const seedData = {
 };
 
 async function seed() {
+  const dbPath = process.env.DATABASE_URL?.replace("sqlite:", "") || "./blog.db";
+  const client = new Database(dbPath);
+  const db = drizzle(client);
   console.log("Seeding database...");
 
   // Seed posts
@@ -241,9 +241,12 @@ async function seed() {
   console.log(`Inserted ${seedData.works.length} works with details and tags`);
 
   console.log("Seed complete!");
+  client.close();
 }
 
-seed().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+if (import.meta.url === new URL(process.argv[1], "file:").href) {
+  seed().catch((err) => {
+    console.error("Seed failed:", err);
+    process.exit(1);
+  });
+}

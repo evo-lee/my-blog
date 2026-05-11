@@ -11,6 +11,7 @@ import { users, posts } from "@db/schema";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { countWords } from "./lib/words";
 import { cleanupExpired } from "./sessions";
+import { seedData } from "../db/seed";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -122,6 +123,22 @@ async function migrateLegacyApiKeys() {
 }
 migrateLegacyApiKeys().catch((err) =>
   console.error("api key migration failed:", err)
+);
+
+// Fresh deployments should not render an empty blog. If the posts table is
+// empty, keep the generated starter content until the owner replaces it with
+// real writing. Existing databases are left untouched.
+async function seedStarterContentIfEmpty() {
+  const db = getDb();
+  const existing = await db.select({ count: sql<number>`count(*)` }).from(posts);
+  if ((existing[0]?.count ?? 0) > 0) return;
+
+  for (const post of seedData.posts) {
+    await db.insert(posts).values(post);
+  }
+}
+seedStarterContentIfEmpty().catch((err) =>
+  console.error("starter content seed failed:", err)
 );
 
 // Sweep expired sessions + login challenges hourly. Cheap (indexed delete);

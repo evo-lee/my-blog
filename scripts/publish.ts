@@ -22,6 +22,11 @@ interface Config {
   apiKey: string;
 }
 
+type FetchLike = (
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+) => Promise<Response> | Response;
+
 interface Frontmatter {
   slug?: string;
   title?: string;
@@ -29,7 +34,15 @@ interface Frontmatter {
   excerpt?: string;
   date?: string;
   cover?: string;
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+interface PublishOptions {
+  file: string;
+  server: string;
+  apiKey: string;
+  fetchImpl?: FetchLike;
+  log?: Pick<Console, "log" | "error">;
 }
 
 function loadConfig(): Partial<Config> {
@@ -104,21 +117,23 @@ function formatDate(date?: string): string {
   return date.replace(/-/g, ".");
 }
 
-async function main() {
-  const { file, server, apiKey } = parseArgs();
+export async function publishFromFile({
+  file,
+  server,
+  apiKey,
+  fetchImpl = fetch,
+  log = console,
+}: PublishOptions) {
 
   if (!server) {
-    console.error("Error: --server is required (or set in ~/.leeblog.json)");
-    process.exit(1);
+    throw new Error("--server is required (or set in ~/.leeblog.json)");
   }
   if (!apiKey) {
-    console.error("Error: --api-key is required (or set in ~/.leeblog.json or LEEBLOG_API_KEY env)");
-    process.exit(1);
+    throw new Error("--api-key is required (or set in ~/.leeblog.json or LEEBLOG_API_KEY env)");
   }
 
   if (!fs.existsSync(file)) {
-    console.error(`Error: File not found: ${file}`);
-    process.exit(1);
+    throw new Error(`File not found: ${file}`);
   }
 
   const raw = fs.readFileSync(file, "utf-8");
@@ -138,18 +153,17 @@ async function main() {
     .filter((p) => p.length > 0);
 
   if (paragraphs.length === 0) {
-    console.error("Error: Article has no content paragraphs");
-    process.exit(1);
+    throw new Error("Article has no content paragraphs");
   }
 
-  console.log(`Publishing: ${title}`);
-  console.log(`Slug: ${slug}`);
-  console.log(`Paragraphs: ${paragraphs.length}`);
+  log.log(`Publishing: ${title}`);
+  log.log(`Slug: ${slug}`);
+  log.log(`Paragraphs: ${paragraphs.length}`);
 
   const publishUrl = server.replace(/\/$/, "") + "/api/publish";
 
   try {
-    const response = await fetch(publishUrl, {
+    const response = await fetchImpl(publishUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -166,21 +180,37 @@ async function main() {
       }),
     });
 
-    const result = await response.json();
+    const result = (await response.json()) as {
+      id?: number;
+      slug?: string;
+      url?: string;
+      error?: string;
+    };
 
     if (!response.ok) {
-      console.error(`Error ${response.status}: ${result.error || "Unknown error"}`);
-      process.exit(1);
+      throw new Error(`Error ${response.status}: ${result.error || "Unknown error"}`);
     }
 
-    console.log(`\n✅ Published successfully!`);
-    console.log(`URL: ${server}/article/${slug}`);
-    console.log(`ID: ${result.id}`);
-  } catch (err: any) {
-    console.error(`Error: ${err.message}`);
-    console.error(`Make sure the server is running at ${server}`);
+    log.log(`\n✅ Published successfully!`);
+    log.log(`URL: ${server}/article/${slug}`);
+    log.log(`ID: ${result.id}`);
+    return result as { id: number; slug: string; url: string };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${message}\nMake sure the server is running at ${server}`);
+  }
+}
+
+async function main() {
+  try {
+    await publishFromFile(parseArgs());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error: ${message}`);
     process.exit(1);
   }
 }
 
-main();
+if (import.meta.url === new URL(process.argv[1], "file:").href) {
+  main();
+}

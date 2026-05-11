@@ -257,6 +257,16 @@ export const authRouter = createRouter({
     return { success: true };
   }),
 
+  // ── 移除已启用的 2FA；之后可重新 setup → verify ──
+  disable2FA: adminQuery.mutation(async ({ ctx }) => {
+    const db = getDb();
+    await db
+      .update(users)
+      .set({ totpSecret: null, pendingTotpSecret: null })
+      .where(eq(users.id, ctx.user.id));
+    return { success: true };
+  }),
+
   // ── 获取当前用户 ──
   me: publicQuery.query(async ({ ctx }) => {
     if (!ctx.user) return null;

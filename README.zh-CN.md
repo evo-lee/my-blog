@@ -90,13 +90,15 @@ SQLite，驱动是 `better-sqlite3`。表：`users`、`sessions`、`login_challe
 
 `site_settings` 是单行表（`id=1`），默认值来自 `db/site-defaults.ts`。它驱动页头 / 页脚站点标题、双语 Hero 文案、ICP备案号、公安备案号、双语版权文字。`comments` 存文章评论；公开提交默认待审核，管理员通过后才展示。
 
+新部署会保留生成的默认文章：服务启动时，`api/boot.ts` 只在 `posts` 表为空时写入 `db/seed.ts` 里的 `seedData.posts`。只要库里已有任意文章，启动时就会跳过默认内容，后续真实写作可以慢慢替代。
+
 ### 鉴权
 
 DB session，无 JWT。Cookie 持有 32 字节随机 token，DB 里只存 token 的 SHA-256 哈希（`sessions` 表，7 天 TTL，`HttpOnly`、`SameSite=Lax`，生产环境自动加 `Secure`）。登出会真正 `DELETE` 该行，撤销立即生效。2FA 登录流程用独立的 `login_challenges` 表（5 分钟 TTL，单次消费）衔接 step 1 → step 2。CLI 用 `x-api-key` 请求头，服务端先哈希明文 key，再匹配 `users.api_key` 里的摘要。生成 API key 时只展示一次明文，数据库只保存 SHA-256。启动时会把不是 64 字符摘要的旧版明文 API key 置空，受影响账号需要在 `/admin` 重新生成。
 
 `authedQuery` 接受 session cookie 或 API key 两种鉴权方式。**`adminQuery`**** 只接受 session cookie，对 API-key 鉴权直接 403**——CLI 发布密钥泄露也无法删除文章、审核评论、修改站点设置、轮换密钥或修改 2FA。鉴权方式通过 `ctx.authMethod`（`"session"` 或 `"apikey"`）暴露。
 
-2FA 启用走 pending → active：`setup2FA` 把秘钥写入 `users.pending_totp_secret`；`verify2FA` 验证 TOTP 后才晋升到 `users.totp_secret`；`cancel2FASetup` 清空 pending。中途关掉 QR 页不会再把账号锁死。
+2FA 启用走 pending → active：`setup2FA` 把秘钥写入 `users.pending_totp_secret`；`verify2FA` 验证 authenticator 里的 6 位验证码后才晋升到 `users.totp_secret`；`cancel2FASetup` 清空 pending。中途关掉 QR 页不会再把账号锁死。已启用的 2FA 可通过 `disable2FA` 移除，然后重新设置。
 
 目前没有单独的管理员角色 —— 任何注册用户都被视为管理员（单管理员博客够用，多用户场景见 `CLAUDE.md` 里的 TODO）。
 
@@ -121,7 +123,7 @@ DB session，无 JWT。Cookie 持有 32 字节随机 token，DB 里只存 token 
 
 ## 测试
 
-`vitest` 已通过 `npm test` 与 `vitest.config.ts` 接好了，但目前仓库里**还没有任何 ****`*.test.ts`**** 文件**。当前测试发现范围只包含 `api/**/*.test.ts` 与 `api/**/*.spec.ts`。
+`vitest` 已通过 `npm test` 与 `vitest.config.ts` 接好。当前测试发现范围包含 `api/**/*.test.ts` 与 `api/**/*.spec.ts`，`api/auth-2fa.test.ts` 覆盖 2FA 设置/登录以及 CLI 发布冒烟路径。
 
 跑单个文件：
 
@@ -177,6 +179,8 @@ npm run db:push          # 仅首次或 schema 变更时
 npm start                # → http://localhost:3000
 ```
 
+生产 bundle 是 ESM，但 `better-sqlite3` 运行时要加载原生 `.node` 绑定。esbuild 命令里必须保留 `--external:better-sqlite3`，并通过 banner 注入 `require`、`__filename`、`__dirname`。否则生产日志可能出现 `__filename is not defined` 或 `Could not locate the bindings file`，即使 HTTP 服务表面上已经启动。
+
 部署上线后第一次访问会强制弹 setup 浮层 —— 立即创建管理员账号，避免给陌生人留窗口。
 
 ### Docker
@@ -210,7 +214,9 @@ docker run --rm -p 3000:3000 \
 
 - Setup 浮层是**先到先得**的设计（不走终端 token，是为了适配 Cloudflare 之类的部署）。部署完立即打开域名抢占管理员账号。
 - Schema 改了之后，要对线上 SQLite 跑一次 `npm run db:push`。
+- 空数据库启动时会自动写入生成的默认文章；只要已有任意文章，就不会重复写入。
 - 哈希 API key 改动前生成的旧 key 会在服务启动时失效，需要到 `/admin` 重新生成。
+- 不要把 `better-sqlite3` 打进 `dist/boot.js`；它必须从 `node_modules` 加载，原生绑定路径才正确。
 - `Dockerfile` 默认走国内 npm 镜像 —— 不在该网络环境下构建请改掉。
 
 ---

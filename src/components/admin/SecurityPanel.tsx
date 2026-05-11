@@ -8,10 +8,39 @@ export default function SecurityPanel() {
   const { data: me } = trpc.auth.me.useQuery();
 
   const [showApiKey, setShowApiKey] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
   const [copied, triggerCopied] = useTransientFlag(2000);
   const [copyFailed, triggerCopyFailed] = useTransientFlag(2500);
+  const [twoFASaved, triggerTwoFASaved] = useTransientFlag(3000);
+  const [twoFARemoved, triggerTwoFARemoved] = useTransientFlag(3000);
 
-  const setup2FAMutation = trpc.auth.setup2FA.useMutation();
+  const setup2FAMutation = trpc.auth.setup2FA.useMutation({
+    onSuccess: () => {
+      setTotpCode('');
+    },
+  });
+  const verify2FAMutation = trpc.auth.verify2FA.useMutation({
+    onSuccess: () => {
+      setTotpCode('');
+      setup2FAMutation.reset();
+      utils.auth.me.invalidate();
+      triggerTwoFASaved();
+    },
+  });
+  const cancel2FAMutation = trpc.auth.cancel2FASetup.useMutation({
+    onSuccess: () => {
+      setTotpCode('');
+      setup2FAMutation.reset();
+    },
+  });
+  const disable2FAMutation = trpc.auth.disable2FA.useMutation({
+    onSuccess: () => {
+      setTotpCode('');
+      setup2FAMutation.reset();
+      utils.auth.me.invalidate();
+      triggerTwoFARemoved();
+    },
+  });
 
   const generateKeyMutation = trpc.auth.generateApiKey.useMutation({
     onSuccess: (data) => {
@@ -35,6 +64,12 @@ export default function SecurityPanel() {
     }
   };
 
+  const handleConfirm2FA = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (totpCode.length !== 6) return;
+    verify2FAMutation.mutate({ code: totpCode });
+  };
+
   return (
     <div className="mb-10 space-y-6">
       {/* 2FA Status */}
@@ -55,27 +90,117 @@ export default function SecurityPanel() {
           )}
         </div>
 
-        {!me?.has2FA && (
+        {me?.has2FA ? (
           <div className="space-y-4">
             <p className="font-body text-sm text-muted-foreground">
-              Enable 2FA to protect your admin account. Scan the QR code with Google Authenticator or Authy.
+              2FA is active. Future admin logins require a 6-digit authenticator code.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => disable2FAMutation.mutate()}
+                disabled={disable2FAMutation.isPending}
+                className="px-4 py-2 border border-red-500/30 text-red-400 font-mono text-xs rounded-sm hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                {disable2FAMutation.isPending ? 'Removing...' : 'Remove 2FA'}
+              </button>
+              {twoFASaved && (
+                <span className="font-mono text-[10px] text-nocturne-gold">
+                  2FA enabled. Your next admin login will ask for a code.
+                </span>
+              )}
+            </div>
+            {disable2FAMutation.error && (
+              <p className="font-mono text-[10px] text-red-400">
+                {disable2FAMutation.error.message}
+              </p>
+            )}
+          </div>
+        ) : !setup2FAMutation.data ? (
+          <div className="space-y-4">
+            <p className="font-body text-sm text-muted-foreground">
+              Enable 2FA to protect your admin account. Scan the QR code, then confirm with a 6-digit code before 2FA is turned on.
             </p>
             <button
               onClick={() => setup2FAMutation.mutate()}
+              disabled={setup2FAMutation.isPending}
               className="px-4 py-2 border border-border rounded-sm font-mono text-xs text-foreground hover:bg-card transition-colors"
             >
-              Setup 2FA
+              {setup2FAMutation.isPending ? 'Generating...' : 'Setup 2FA'}
             </button>
+            {twoFARemoved && (
+              <p className="font-mono text-[10px] text-nocturne-gold">
+                2FA removed. You can set it up again.
+              </p>
+            )}
+            {setup2FAMutation.error && (
+              <p className="font-mono text-[10px] text-red-400">
+                {setup2FAMutation.error.message}
+              </p>
+            )}
           </div>
-        )}
-
-        {setup2FAMutation.data && (
-          <div className="mt-4 space-y-4">
-            <img src={setup2FAMutation.data.qrUrl} alt="2FA QR Code" className="w-40 h-40 rounded-sm" />
+        ) : (
+          <form onSubmit={handleConfirm2FA} className="mt-4 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <img
+                src={setup2FAMutation.data.qrUrl}
+                alt="2FA QR Code"
+                className="w-40 h-40 rounded-sm bg-white"
+              />
+              <div className="space-y-3 flex-1">
+                <p className="font-body text-sm text-muted-foreground">
+                  Scan this QR code with your authenticator app, then enter the current 6-digit code to finish setup.
+                </p>
+                <p className="font-mono text-xs text-muted-foreground">
+                  Secret: <code className="text-foreground bg-card px-1 py-0.5 rounded break-all">{setup2FAMutation.data.secret}</code>
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 max-w-xs">
+              <label className="block font-mono text-[10px] tracking-wider uppercase text-muted-foreground">
+                Verification Code
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full px-3 py-2 bg-card border border-border/30 rounded-sm font-mono text-lg tracking-widest text-center text-foreground focus:outline-none focus:border-foreground/40"
+                placeholder="000000"
+                maxLength={6}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={verify2FAMutation.isPending || totpCode.length !== 6}
+                className="px-4 py-2 bg-foreground text-background font-mono text-xs rounded-sm hover:bg-foreground/90 transition-colors disabled:opacity-50"
+              >
+                {verify2FAMutation.isPending ? 'Verifying...' : 'Confirm 2FA'}
+              </button>
+              <button
+                type="button"
+                onClick={() => cancel2FAMutation.mutate()}
+                disabled={cancel2FAMutation.isPending}
+                className="px-4 py-2 border border-border rounded-sm font-mono text-xs text-muted-foreground hover:text-foreground hover:bg-card transition-colors disabled:opacity-50"
+              >
+                Cancel setup
+              </button>
+            </div>
+            {verify2FAMutation.error && (
+              <p className="font-mono text-[10px] text-red-400">
+                {verify2FAMutation.error.message}
+              </p>
+            )}
+            {cancel2FAMutation.error && (
+              <p className="font-mono text-[10px] text-red-400">
+                {cancel2FAMutation.error.message}
+              </p>
+            )}
             <p className="font-mono text-xs text-muted-foreground">
-              Secret: <code className="text-foreground bg-card px-1 py-0.5 rounded">{setup2FAMutation.data.secret}</code>
+              2FA will not be enabled until this code is confirmed.
             </p>
-          </div>
+          </form>
         )}
       </div>
 
