@@ -1,12 +1,13 @@
-import { useEffect, useRef, Children } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import gsap from 'gsap';
 import { usePostBySlug } from '@/hooks/useBackend';
 import { useI18n } from '@/i18n/useI18n';
 import { getArticleWordCount, formatWordCount } from '@/utils/wordCount';
+import { resolveImageUrl } from '@/lib/resolveUrl';
 import { SEO, ArticleJSONLD } from '@/components/SEO';
+import { ArticleMarkdown } from '@/components/ArticleMarkdown';
+import Comments from '@/components/Comments';
 import { ArrowLeft, Clock } from 'lucide-react';
 
 export default function ArticleDetail() {
@@ -56,12 +57,10 @@ export default function ArticleDetail() {
 
   const wordCount = getArticleWordCount(post.content);
 
-  // Use a relative path; SEO/ArticleJSONLD prefix it with the live origin.
-  // Falling back to undefined lets <SEO/> emit its DEFAULT_IMAGE instead of
-  // a nonsense URL like ".../article/null".
-  const articleImage = post.coverImage
-    ? (post.coverImage.startsWith('http') ? post.coverImage : `${window.location.origin}${post.coverImage}`)
-    : undefined;
+  // Falling back to undefined lets <SEO/> emit its DEFAULT_IMAGE instead of a
+  // nonsense URL like ".../article/null".
+  const articleImage = resolveImageUrl(post.coverImage);
+  const fallbackJsonldImage = resolveImageUrl('/images/hero.jpg') ?? '/images/hero.jpg';
 
   return (
     <>
@@ -80,7 +79,7 @@ export default function ArticleDetail() {
         title={post.title}
         description={post.excerpt || ''}
         url={`/article/${post.slug}`}
-        image={articleImage ?? `${window.location.origin}/images/hero.jpg`}
+        image={articleImage ?? fallbackJsonldImage}
         datePublished={post.publishedDate || ''}
         wordCount={wordCount}
       />
@@ -142,38 +141,11 @@ export default function ArticleDetail() {
 
           {/* Article body */}
           <div className="prose max-w-none prose-headings:font-display prose-headings:text-foreground prose-p:font-body prose-p:text-base prose-p:leading-[1.8] prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-li:text-foreground prose-a:text-nocturne-gold prose-a:no-underline hover:prose-a:underline prose-code:font-mono prose-code:text-foreground prose-pre:bg-muted prose-blockquote:border-l-nocturne-gold prose-blockquote:text-muted-foreground prose-hr:border-border">
-            {(() => {
-              let isFirst = true;
-              return (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    p({ children }) {
-                      if (isFirst) {
-                        isFirst = false;
-                        const arr = Children.toArray(children);
-                        const first = arr[0];
-                        if (typeof first === 'string' && first.length > 0) {
-                          return (
-                            <p className="font-body text-base md:text-lg leading-[1.8] text-foreground">
-                              <span className="float-left font-display text-5xl md:text-6xl leading-[0.8] mr-3 mt-1 text-nocturne-gold">
-                                {first.charAt(0)}
-                              </span>
-                              {first.slice(1)}
-                              {arr.slice(1)}
-                            </p>
-                          );
-                        }
-                      }
-                      return <p className="font-body text-base md:text-lg leading-[1.8] text-foreground">{children}</p>;
-                    },
-                  }}
-                >
-                  {post.content.join('\n\n')}
-                </ReactMarkdown>
-              );
-            })()}
+            <ArticleMarkdown paragraphs={post.content} />
           </div>
+
+          {/* Comments */}
+          <Comments postId={post.id} />
 
           {/* Footer divider */}
           <div className="border-t border-border/30 mt-16 pt-12">

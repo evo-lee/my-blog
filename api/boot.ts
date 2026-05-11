@@ -2,12 +2,13 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { createHash } from "node:crypto";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { env } from "./lib/env";
 import { getDb } from "./queries/connection";
 import { users, posts } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { countWords } from "./lib/words";
 import { cleanupExpired } from "./sessions";
 
@@ -33,10 +34,11 @@ app.post("/api/publish", async (c) => {
   }
 
   const db = getDb();
+  const apiKeyHash = createHash("sha256").update(apiKey).digest("hex");
   const user = await db
     .select()
     .from(users)
-    .where(eq(users.apiKey, apiKey))
+    .where(eq(users.apiKey, apiKeyHash))
     .limit(1);
 
   if (user.length === 0) {
@@ -106,6 +108,21 @@ app.post("/api/publish", async (c) => {
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 
 export default app;
+
+// One-shot migration: SHA-256 hex digests are 64 chars; legacy plaintext
+// keys were 32 hex chars (UUID without hyphens). Null any users.api_key
+// value whose length is not 64 so affected admins regenerate via the
+// dashboard. Idempotent — once no plaintext rows remain, this is a no-op.
+async function migrateLegacyApiKeys() {
+  const db = getDb();
+  await db
+    .update(users)
+    .set({ apiKey: null })
+    .where(and(isNotNull(users.apiKey), ne(sql`length(${users.apiKey})`, 64)));
+}
+migrateLegacyApiKeys().catch((err) =>
+  console.error("api key migration failed:", err)
+);
 
 // Sweep expired sessions + login challenges hourly. Cheap (indexed delete);
 // keeps DB tidy in long-running deployments.

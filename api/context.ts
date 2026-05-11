@@ -1,5 +1,6 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { verifySession } from "./sessions";
@@ -44,14 +45,16 @@ export async function createContext(
   // 2. fallback: x-api-key header. Note: API-key auth grants only a limited
   //    surface — adminMiddleware in middleware.ts rejects it for destructive
   //    admin procedures. Use session auth from the browser for those.
+  //    The DB stores SHA-256(plaintext); hash the header value before lookup.
   if (!user) {
     const apiKeyHeader = req.headers.get("x-api-key") || "";
     if (apiKeyHeader) {
+      const apiKeyHash = createHash("sha256").update(apiKeyHeader).digest("hex");
       const db = getDb();
       const found = await db
         .select()
         .from(users)
-        .where(eq(users.apiKey, apiKeyHeader))
+        .where(eq(users.apiKey, apiKeyHash))
         .limit(1);
 
       if (found.length > 0) {

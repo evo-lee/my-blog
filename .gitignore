@@ -42,3 +42,4 @@ coverage/
 # nlpm generated artifacts
 .claude/nlpm-history.json
 .gstack/
+.codex-toolkit/

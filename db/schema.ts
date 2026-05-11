@@ -4,6 +4,7 @@ import {
   integer,
   text,
 } from "drizzle-orm/sqlite-core";
+import { SITE_DEFAULTS } from "./site-defaults";
 
 // ── 管理员用户表 ──
 export const users = sqliteTable("users", {
@@ -86,4 +87,32 @@ export const workTags = sqliteTable("work_tags", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
   workId: integer("work_id", { mode: "number" }).notNull().references(() => works.id, { onDelete: "cascade" }),
   name: text("name", { length: 50 }).notNull(),
+});
+
+// ── 站点设置表（单行，id=1）──
+export const siteSettings = sqliteTable("site_settings", {
+  id: integer("id", { mode: "number" }).primaryKey(),
+  siteTitle: text("site_title", { length: 100 }).notNull().default(SITE_DEFAULTS.siteTitle),
+  heroTitleEn: text("hero_title_en", { length: 100 }).notNull().default(SITE_DEFAULTS.heroTitleEn),
+  heroTitleZh: text("hero_title_zh", { length: 100 }).notNull().default(SITE_DEFAULTS.heroTitleZh),
+  heroSubtitleEn: text("hero_subtitle_en").notNull().default(SITE_DEFAULTS.heroSubtitleEn),
+  heroSubtitleZh: text("hero_subtitle_zh").notNull().default(SITE_DEFAULTS.heroSubtitleZh),
+  icpNumber: text("icp_number", { length: 100 }).notNull().default(SITE_DEFAULTS.icpNumber),
+  publicSecurityNumber: text("public_security_number", { length: 100 }).notNull().default(SITE_DEFAULTS.publicSecurityNumber),
+  copyrightEn: text("copyright_en", { length: 200 }).notNull().default(SITE_DEFAULTS.copyrightEn),
+  copyrightZh: text("copyright_zh", { length: 200 }).notNull().default(SITE_DEFAULTS.copyrightZh),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+// ── 评论表 ──
+export const comments = sqliteTable("comments", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  postId: integer("post_id", { mode: "number" })
+    .notNull()
+    .references(() => posts.id, { onDelete: "cascade" }),
+  authorName: text("author_name", { length: 50 }).notNull(),
+  authorEmail: text("author_email", { length: 100 }),
+  content: text("content").notNull(),
+  approved: integer("approved", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
 });

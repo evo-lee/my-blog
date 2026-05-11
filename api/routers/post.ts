@@ -1,9 +1,16 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, like, or, desc, sql } from "drizzle-orm";
+import { and, eq, or, desc, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { posts } from "@db/schema";
 import { createRouter, publicQuery, adminQuery } from "../middleware";
+
+// Escape SQLite LIKE wildcards so user-supplied `%` / `_` are matched
+// literally instead of degenerating into a full-table scan. Paired with
+// an explicit `ESCAPE '\'` clause in the LIKE expression below.
+function escapeLikePattern(s: string): string {
+  return s.replace(/[\\%_]/g, "\\$&");
+}
 
 function parseContent(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -78,9 +85,10 @@ export const postRouter = createRouter({
 
   // 搜索已发布文章
   search: publicQuery
-    .input(z.object({ q: z.string() }))
+    .input(z.object({ q: z.string().trim().min(1).max(100) }))
     .query(async ({ input }) => {
       const db = getDb();
+      const pattern = `%${escapeLikePattern(input.q)}%`;
       const results = await db
         .select()
         .from(posts)
@@ -88,10 +96,10 @@ export const postRouter = createRouter({
           and(
             eq(posts.published, true),
             or(
-              like(posts.title, `%${input.q}%`),
-              like(posts.excerpt, `%${input.q}%`),
-              like(posts.category, `%${input.q}%`),
-              like(posts.publishedDate, `%${input.q}%`)
+              sql`${posts.title} LIKE ${pattern} ESCAPE '\\'`,
+              sql`${posts.excerpt} LIKE ${pattern} ESCAPE '\\'`,
+              sql`${posts.category} LIKE ${pattern} ESCAPE '\\'`,
+              sql`${posts.publishedDate} LIKE ${pattern} ESCAPE '\\'`
             )
           )
         )

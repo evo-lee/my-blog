@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useI18n } from '@/i18n/useI18n';
+import { useSettings } from '@/hooks/useSettings';
 import { Sun, Moon, Rss } from 'lucide-react';
 
 export default function Header() {
   const { theme, toggle } = useTheme();
   const { lang, toggleLang, t } = useI18n();
+  const { siteTitle } = useSettings();
   const headerRef = useRef<HTMLElement>(null);
   const location = useLocation();
 
@@ -29,13 +31,20 @@ export default function Header() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [theme]);
 
-  const isArticlesPage = location.pathname === '/articles';
-  const isWorksPage = location.pathname.startsWith('/works');
-  const isAboutPage = location.pathname === '/about';
-  const isHomePage = location.pathname === '/';
-
   const homeLabel = lang === 'zh' ? '首页' : 'Home';
   const worksLabel = lang === 'zh' ? '作品' : 'Works';
+
+  const navItems: Array<{ to: string; label: string; active: boolean }> = [
+    { to: '/', label: homeLabel, active: location.pathname === '/' },
+    { to: '/articles', label: t.nav.articles, active: location.pathname === '/articles' },
+    { to: '/works', label: worksLabel, active: location.pathname.startsWith('/works') },
+    { to: '/about', label: t.nav.about, active: location.pathname === '/about' },
+  ];
+
+  const navClass = (active: boolean) =>
+    `font-body text-sm font-semibold uppercase tracking-wider transition-colors duration-300 ${
+      active ? 'text-foreground' : 'text-foreground/60 hover:text-foreground'
+    }`;
 
   return (
     <header
@@ -49,52 +58,17 @@ export default function Header() {
           to="/"
           className="font-display text-xl md:text-2xl text-foreground tracking-tight"
         >
-          Lee's Blog
+          {siteTitle}
         </Link>
 
         {/* Nav + Language + Theme toggle */}
         <div className="flex items-center gap-4 md:gap-8">
           <nav className="hidden md:flex items-center gap-7">
-            <Link
-              to="/"
-              className={`font-body text-sm font-semibold uppercase tracking-wider transition-colors duration-300 ${
-                isHomePage
-                  ? 'text-foreground'
-                  : 'text-foreground/60 hover:text-foreground'
-              }`}
-            >
-              {homeLabel}
-            </Link>
-            <Link
-              to="/articles"
-              className={`font-body text-sm font-semibold uppercase tracking-wider transition-colors duration-300 ${
-                isArticlesPage
-                  ? 'text-foreground'
-                  : 'text-foreground/60 hover:text-foreground'
-              }`}
-            >
-              {t.nav.articles}
-            </Link>
-            <Link
-              to="/works"
-              className={`font-body text-sm font-semibold uppercase tracking-wider transition-colors duration-300 ${
-                isWorksPage
-                  ? 'text-foreground'
-                  : 'text-foreground/60 hover:text-foreground'
-              }`}
-            >
-              {worksLabel}
-            </Link>
-            <Link
-              to="/about"
-              className={`font-body text-sm font-semibold uppercase tracking-wider transition-colors duration-300 ${
-                isAboutPage
-                  ? 'text-foreground'
-                  : 'text-foreground/60 hover:text-foreground'
-              }`}
-            >
-              {t.nav.about}
-            </Link>
+            {navItems.map((item) => (
+              <Link key={item.to} to={item.to} className={navClass(item.active)}>
+                {item.label}
+              </Link>
+            ))}
             <a
               href="/feed.xml"
               target="_blank"

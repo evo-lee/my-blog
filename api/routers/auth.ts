@@ -4,8 +4,16 @@ import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
+import { createHash, randomBytes } from "node:crypto";
 import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
+
+// API keys are stored in users.api_key as a SHA-256 hex digest (64 chars).
+// The plaintext value is returned to the admin once at generation time and
+// never persisted, mirroring the session-token pattern in sessions.ts.
+function hashApiKey(plaintext: string): string {
+  return createHash("sha256").update(plaintext).digest("hex");
+}
 import { createRouter, publicQuery, adminQuery } from "../middleware";
 import {
   createSession,
@@ -276,13 +284,15 @@ export const authRouter = createRouter({
   }),
 
   // ── 生成 API Key ──
+  // Returns the plaintext key to the caller exactly once; only the SHA-256
+  // hash is stored, so DB exfiltration alone cannot grant publish access.
   generateApiKey: adminQuery.mutation(async ({ ctx }) => {
-    const apiKey = crypto.randomUUID().replace(/-/g, "");
+    const apiKey = randomBytes(32).toString("hex");
 
     const db = getDb();
     await db
       .update(users)
-      .set({ apiKey })
+      .set({ apiKey: hashApiKey(apiKey) })
       .where(eq(users.id, ctx.user.id));
 
     return { apiKey };

@@ -2,6 +2,8 @@ import { createRouter, publicQuery } from "./middleware";
 import { postRouter } from "./routers/post";
 import { workRouter } from "./routers/work";
 import { authRouter } from "./routers/auth";
+import { settingsRouter } from "./routers/settings";
+import { commentRouter } from "./routers/comment";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
@@ -9,6 +11,8 @@ export const appRouter = createRouter({
   post: postRouter,
   work: workRouter,
   auth: authRouter,
+  settings: settingsRouter,
+  comment: commentRouter,
 });
 
 export type AppRouter = typeof appRouter;

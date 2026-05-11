@@ -7,10 +7,6 @@ export const translations = {
       articles: 'Articles',
       about: 'About',
     },
-    hero: {
-      title: 'Evo Lee',
-      subtitle: 'Thoughts on literature, design, and the quiet spaces in between.',
-    },
     articles: {
       sectionTitle: 'Articles',
       readMore: 'Read more',
@@ -23,8 +19,16 @@ export const translations = {
       back: 'Back',
       allWritings: 'All writings',
     },
-    footer: {
-      copyright: '\u00a9 2026 \u2014 All rights reserved',
+    comments: {
+      title: 'Comments',
+      empty: 'No comments yet. Be the first to say something.',
+      name: 'Name',
+      email: 'Email (optional, never shown)',
+      content: 'Your comment',
+      submit: 'Post comment',
+      submitting: 'Posting…',
+      pending: 'Thanks — your comment is awaiting moderation.',
+      moderationNote: 'Comments are reviewed before they appear.',
     },
   },
   zh: {
@@ -32,10 +36,6 @@ export const translations = {
       works: '作品',
       articles: '文章',
       about: '关于',
-    },
-    hero: {
-      title: 'Evo Lee',
-      subtitle: '关于文学、设计，以及其间安静角落的思考。',
     },
     articles: {
       sectionTitle: '文章',
@@ -49,8 +49,16 @@ export const translations = {
       back: '返回',
       allWritings: '全部文章',
     },
-    footer: {
-      copyright: '\u00a9 2026 \u2014 保留所有权利',
+    comments: {
+      title: '评论',
+      empty: '暂无评论，来说点什么吧。',
+      name: '昵称',
+      email: '邮箱（可选，不会公开）',
+      content: '你的评论',
+      submit: '发表评论',
+      submitting: '提交中…',
+      pending: '感谢留言，评论正在审核中。',
+      moderationNote: '评论需审核通过后显示。',
     },
   },
 } as const;
