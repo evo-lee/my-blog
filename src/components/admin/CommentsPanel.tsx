@@ -79,6 +79,11 @@ export default function CommentsPanel() {
                         pending
                       </span>
                     )}
+                    {c.parentId != null && (
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-sm bg-blue-500/10 text-blue-400">
+                        ↳ reply to {c.parentAuthorName ?? "(deleted)"}
+                      </span>
+                    )}
                   </div>
                   <div className="font-mono text-[10px] text-muted-foreground mt-1">
                     on{' '}

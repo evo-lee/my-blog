@@ -3,6 +3,7 @@ export type Lang = 'zh' | 'en';
 export const translations = {
   en: {
     nav: {
+      home: 'Home',
       works: 'Works',
       articles: 'Articles',
       about: 'About',
@@ -19,6 +20,11 @@ export const translations = {
       back: 'Back',
       allWritings: 'All writings',
     },
+    notFound: {
+      title: 'Page not found',
+      body: 'The page you are looking for does not exist or has been moved.',
+      back: 'Return home',
+    },
     comments: {
       title: 'Comments',
       empty: 'No comments yet. Be the first to say something.',
@@ -29,10 +35,15 @@ export const translations = {
       submitting: 'Posting…',
       pending: 'Thanks — your comment is awaiting moderation.',
       moderationNote: 'Comments are reviewed before they appear.',
+      reply: 'Reply',
+      cancelReply: 'Cancel',
+      replyTo: 'Replying to {{name}}',
+      replySubmit: 'Post reply',
     },
   },
   zh: {
     nav: {
+      home: '首页',
       works: '作品',
       articles: '文章',
       about: '关于',
@@ -49,6 +60,11 @@ export const translations = {
       back: '返回',
       allWritings: '全部文章',
     },
+    notFound: {
+      title: '页面未找到',
+      body: '你正在查找的页面不存在或已被移除。',
+      back: '返回首页',
+    },
     comments: {
       title: '评论',
       empty: '暂无评论，来说点什么吧。',
@@ -59,6 +75,10 @@ export const translations = {
       submitting: '提交中…',
       pending: '感谢留言，评论正在审核中。',
       moderationNote: '评论需审核通过后显示。',
+      reply: '回复',
+      cancelReply: '取消',
+      replyTo: '回复 {{name}}',
+      replySubmit: '发表回复',
     },
   },
 } as const;

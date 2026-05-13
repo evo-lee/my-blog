@@ -2,10 +2,12 @@ import type { ReactNode } from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router';
 import { ThemeProvider } from '@/hooks/ThemeProvider';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import { useI18n } from '@/i18n/useI18n';
 import { AdminProvider } from '@/hooks/AdminProvider';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import { trpc } from '@/providers/trpc-client';
 import { SEO } from '@/components/SEO';
+import AnalyticsLoader from '@/components/AnalyticsLoader';
 import Header from '@/sections/Header';
 import Hero from '@/sections/Hero';
 import PostList from '@/sections/PostList';
@@ -23,16 +25,15 @@ import AdminEditPost from '@/pages/AdminEditPost';
 import AdminNewPost from '@/pages/AdminNewPost';
 
 function NotFound() {
+  const { t } = useI18n();
   return (
     <>
-      <SEO title="Not Found" description="The page you are looking for does not exist." url="/" />
+      <SEO title={t.notFound.title} description={t.notFound.body} url="/" />
       <div className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center">
-        <h1 className="font-display text-4xl text-foreground mb-4">Page not found</h1>
-        <p className="text-muted-foreground mb-8">
-          The page you are looking for does not exist or has been moved.
-        </p>
+        <h1 className="font-display text-4xl text-foreground mb-4">{t.notFound.title}</h1>
+        <p className="text-muted-foreground mb-8">{t.notFound.body}</p>
         <Link to="/" className="font-mono text-sm text-foreground underline underline-offset-4">
-          Return home
+          {t.notFound.back}
         </Link>
       </div>
     </>
@@ -66,6 +67,7 @@ function AppContent() {
   usePageTracking();
   return (
     <SetupGuard>
+      <AnalyticsLoader />
       <Header />
       <main>
         <Routes>
