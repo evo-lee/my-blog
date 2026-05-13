@@ -31,13 +31,10 @@ export default function Header() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [theme]);
 
-  const homeLabel = lang === 'zh' ? '首页' : 'Home';
-  const worksLabel = lang === 'zh' ? '作品' : 'Works';
-
   const navItems: Array<{ to: string; label: string; active: boolean }> = [
-    { to: '/', label: homeLabel, active: location.pathname === '/' },
+    { to: '/', label: t.nav.home, active: location.pathname === '/' },
     { to: '/articles', label: t.nav.articles, active: location.pathname === '/articles' },
-    { to: '/works', label: worksLabel, active: location.pathname.startsWith('/works') },
+    { to: '/works', label: t.nav.works, active: location.pathname.startsWith('/works') },
     { to: '/about', label: t.nav.about, active: location.pathname === '/about' },
   ];
 

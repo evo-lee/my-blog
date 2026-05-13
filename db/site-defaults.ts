@@ -12,6 +12,11 @@ export const SITE_DEFAULTS = {
   publicSecurityNumber: "",
   copyrightEn: "© 2026 — All rights reserved",
   copyrightZh: "© 2026 — 保留所有权利",
+  // Each analytics integration is independently enabled by setting its
+  // identifier (and, for Umami, its script URL) to a non-empty value.
+  gaMeasurementId: "",
+  umamiSiteId: "",
+  umamiScriptUrl: "",
 } as const;
 
 export type SiteSettingsDefaults = typeof SITE_DEFAULTS;

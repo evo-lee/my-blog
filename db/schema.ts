@@ -3,6 +3,7 @@ import {
   sqliteTable,
   integer,
   text,
+  type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 import { SITE_DEFAULTS } from "./site-defaults";
 
@@ -101,6 +102,12 @@ export const siteSettings = sqliteTable("site_settings", {
   publicSecurityNumber: text("public_security_number", { length: 100 }).notNull().default(SITE_DEFAULTS.publicSecurityNumber),
   copyrightEn: text("copyright_en", { length: 200 }).notNull().default(SITE_DEFAULTS.copyrightEn),
   copyrightZh: text("copyright_zh", { length: 200 }).notNull().default(SITE_DEFAULTS.copyrightZh),
+  // Analytics: each integration toggles on independently. Empty string = off.
+  // GA4 expects an id matching ^G-[A-Z0-9]{6,}$. Umami needs both a UUID site
+  // id and an https script URL. Validation lives in api/lib/analytics.ts.
+  gaMeasurementId: text("ga_measurement_id", { length: 100 }).notNull().default(SITE_DEFAULTS.gaMeasurementId),
+  umamiSiteId: text("umami_site_id", { length: 100 }).notNull().default(SITE_DEFAULTS.umamiSiteId),
+  umamiScriptUrl: text("umami_script_url", { length: 255 }).notNull().default(SITE_DEFAULTS.umamiScriptUrl),
   updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
 });
 
@@ -110,6 +117,12 @@ export const comments = sqliteTable("comments", {
   postId: integer("post_id", { mode: "number" })
     .notNull()
     .references(() => posts.id, { onDelete: "cascade" }),
+  // Self-reference for 1-level threading. Depth cap (parent.parent_id IS NULL)
+  // enforced in api/routers/comment.ts submit.
+  parentId: integer("parent_id", { mode: "number" }).references(
+    (): AnySQLiteColumn => comments.id,
+    { onDelete: "cascade" },
+  ),
   authorName: text("author_name", { length: 50 }).notNull(),
   authorEmail: text("author_email", { length: 100 }),
   content: text("content").notNull(),

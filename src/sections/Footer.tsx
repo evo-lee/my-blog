@@ -6,6 +6,13 @@ export default function Footer() {
   const hasIcp = icpNumber.trim().length > 0;
   const hasPsb = publicSecurityNumber.trim().length > 0;
 
+  // 公网安备 lookup expects the raw digit run (recordcode) as a query param.
+  // Fall back to the portal root if we can't extract one.
+  const psbDigits = publicSecurityNumber.replace(/\D/g, '');
+  const psbHref = psbDigits
+    ? `http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=${psbDigits}`
+    : 'http://www.beian.gov.cn/';
+
   return (
     <footer className="pt-8 pb-8 px-6 md:px-10 border-t border-border/30">
       <div className="max-w-[1200px] mx-auto">
@@ -23,19 +30,24 @@ export default function Footer() {
                   href="https://beian.miit.gov.cn/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-[10px] text-muted-foreground/60 hover:text-foreground tracking-wide transition-colors"
+                  className="font-mono text-[10px] text-muted-foreground/60 hover:text-foreground tracking-wide transition-colors cursor-pointer"
                 >
                   {icpNumber}
                 </a>
               )}
               {hasIcp && hasPsb && <span className="hidden sm:block w-px h-3 bg-border/30" />}
               {hasPsb && (
-                <span className="font-mono text-[10px] text-muted-foreground/60 tracking-wide flex items-center gap-1.5">
+                <a
+                  href={psbHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[10px] text-muted-foreground/60 hover:text-foreground tracking-wide transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
                   <svg className="w-3 h-3 opacity-50" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
                   </svg>
                   {publicSecurityNumber}
-                </span>
+                </a>
               )}
             </div>
           )}

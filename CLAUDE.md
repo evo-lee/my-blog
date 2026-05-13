@@ -50,7 +50,11 @@ Single Vite process serves both the React client and the Hono API in dev (via `@
 
 SQLite via `better-sqlite3`. DB file path comes from `DATABASE_URL` (e.g. `sqlite:./blog.db`), default `./blog.db`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `comments`, `site_settings`, `works`, `work_details`, `work_tags`. `users` carries both `totp_secret` (verified) and `pending_totp_secret` (set during `setup2FA`, promoted on `verify2FA`). `users.api_key` stores only a SHA-256 hex digest. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays — the `parseContent` helper in `routers/post.ts` returns `[]` on corrupt rows so a bad row can't crash a request.
 
-`site_settings` is a single-row table (`id=1`) seeded from `db/site-defaults.ts` and exposed through `api/routers/settings.ts`; it drives header/footer title, localized hero copy, ICP / public security filing numbers, and localized copyright text. `comments` stores article comments; public submissions are pending by default and only approved comments are returned to public article pages.
+`api/queries/connection.ts` runs `PRAGMA foreign_keys = ON` at construction. This makes `ON DELETE CASCADE` actually enforced — required for the nested-comment cascade and for the reply-submit race handling (a deleted parent triggers `SQLITE_CONSTRAINT_FOREIGNKEY`, which the comment router maps to tRPC `CONFLICT`).
+
+`site_settings` is a single-row table (`id=1`) seeded from `db/site-defaults.ts` and exposed through `api/routers/settings.ts`; it drives header/footer title, localized hero copy, ICP / public security filing numbers, localized copyright text, and the analytics provider configuration (see "Analytics" below). `comments` stores article comments; public submissions are pending by default and only approved comments are returned to public article pages. `comments.parent_id` self-references `comments.id` with `ON DELETE CASCADE` to support 1-level threading.
+
+**Migrations.** Production schema changes go through Drizzle migrations in `db/migrations/`. Run `npm run db:migrate` on deploy. `db:push` is dev-only — it bypasses the migration journal. The baseline migration (`0000_*.sql`) uses `CREATE TABLE IF NOT EXISTS` so it can run safely against databases that were originally created via `db:push`.
 
 Fresh deployments auto-seed generated starter posts. `api/boot.ts` inserts `seedData.posts` from `db/seed.ts` only when `posts` is empty; existing databases are left untouched so real writing can gradually replace the generated defaults.
 
@@ -76,7 +80,41 @@ There is no separate admin **role** today — every registered user is treated a
 
 ### Article rendering
 
-`ArticleDetail.tsx` delegates article body rendering to `src/components/ArticleMarkdown.tsx` (`react-markdown` + `remark-gfm`). The first paragraph gets the drop cap, remaining paragraphs render as normal Markdown. `src/components/Comments.tsx` mounts below the article body, lists approved comments, and submits new comments as pending with a hidden honeypot field.
+`ArticleDetail.tsx` delegates article body rendering to `src/components/ArticleMarkdown.tsx` (`react-markdown` + `remark-gfm`). The first paragraph gets the drop cap, remaining paragraphs render as normal Markdown. `src/components/Comments.tsx` mounts below the article body, lists approved comments + their approved replies, and submits new comments as pending with a hidden honeypot field.
+
+### Comments
+
+- **Threading**: one level deep. `comments.parent_id` points at a top-level comment whose own `parent_id` is `NULL`. The submit path rejects replies-to-replies (`BAD_REQUEST`), replies whose parent is on a different post (`BAD_REQUEST`), and replies whose parent vanished mid-flight (FK pragma → `CONFLICT`).
+- **Public visibility**: `listForPost` returns only top-level approved comments and their approved replies. A reply under an unapproved or deleted parent is hidden publicly, even if the reply itself is approved.
+- **Moderation semantics**:
+  - Delete parent → replies cascade out via FK.
+  - Unapprove parent → replies stay in the DB but become invisible publicly (parent gate).
+  - Approve a reply whose parent is still unapproved → allowed in admin, but the reply remains publicly hidden until the parent is approved too.
+- **Ordering**: top-level comments are newest-first (`created_at DESC`); replies under each parent are oldest-first (`created_at ASC`).
+- **Avatars**: `src/components/PixelAvatar.tsx` renders a deterministic 8×8 symmetric grid seeded by the lowercased commenter name. Email is never sent to the client, so it can't be part of the seed.
+
+### Analytics
+
+`site_settings` holds three analytics fields: `ga_measurement_id`, `umami_site_id`, and `umami_script_url`. Each integration toggles on independently — blank fields = disabled, and both can run side-by-side. `api/lib/analytics.ts` validates in the settings router:
+
+- **GA4** — when `ga_measurement_id` is non-blank it must match `^G-[A-Z0-9]{6,}$`.
+- **Umami** — `umami_site_id` and `umami_script_url` must both be present or both blank. The id must be a UUID; the URL must parse and use the `https:` scheme.
+
+`src/components/AnalyticsLoader.tsx` is mounted once near the root of `App.tsx`. It runs only when `import.meta.env.PROD`, builds both payloads via `src/lib/analyticsLoader.ts` (`buildGooglePayload` + `buildUmamiPayload`), and injects whichever are non-null. The GA injection includes an inline bootstrap so `window.gtag` exists before page tracking fires. The loader is idempotent via `__gaInit` / `__umamiInit` sentinels and removes its own injected `<script>` nodes when the active set changes; third-party globals are intentionally not unwound on teardown.
+
+`src/hooks/usePageTracking.ts` is the consumer side — it calls `window.gtag(...)` and `window.umami.track(...)` on every route change. Without the loader those calls silently no-op, so the loader must mount above `<Routes>`.
+
+If a `Content-Security-Policy` header is ever added in front of this app, `script-src` needs `https://www.googletagmanager.com` (GA) and/or the configured Umami host (Umami). Today no CSP is set; verify before turning analytics on.
+
+### i18n
+
+`src/i18n/I18nProvider.tsx` resolves the initial language with a lazy `useState` initializer (no `useEffect` flash). Precedence:
+
+1. `localStorage.lang` if set to `'en'` or `'zh'`.
+2. `navigator.language` — anything matching `/^zh/i` selects Chinese.
+3. Default `'en'`.
+
+The provider persists every switch to `localStorage` and keeps `document.documentElement.lang` in sync (`en` or `zh-CN`). The hardcoded `lang="en"` in `index.html` is just the pre-mount bootstrap value. Public copy lives in `src/i18n/translations.ts`; the admin dashboard stays English by design.
 
 ### First-run flow
 
@@ -105,4 +143,5 @@ The server bundle is ESM. `better-sqlite3` must stay external in the esbuild com
 - Existing API keys generated before the hashed-key change are invalidated on server startup; regenerate them from `/admin`.
 - Empty databases auto-seed generated starter posts on startup; this is skipped once any post exists.
 - Keep `better-sqlite3` external in esbuild; bundling it breaks native binding lookup in production.
+- Production schema changes go through `npm run db:migrate`. `db:push` is dev-only.
 - `info.md` is a leftover scaffolding log from initial shadcn setup; safe to delete, not part of the source.

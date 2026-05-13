@@ -11,6 +11,9 @@ export function getDb() {
   if (!instance) {
     const dbPath = process.env.DATABASE_URL?.replace("sqlite:", "") || "./blog.db";
     const client = new Database(dbPath);
+    // Enforce ON DELETE CASCADE and FK validity. Required for nested-comment
+    // cascade + the comment-submit race handling (FK error → tRPC CONFLICT).
+    client.pragma("foreign_keys = ON");
     instance = drizzle(client, { schema: fullSchema });
   }
   return instance;
