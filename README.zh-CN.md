@@ -39,16 +39,16 @@ npm run dev
 
 所有变量都是**可选**的。默认 SQLite 路径在本地开发和大多数部署环境下都能用。会话存在数据库里（DB-backed），没有 JWT 密钥需要管理。
 
-| 变量                  | 必填        | 说明                                                                                                              |
-| ------------------- | --------- | --------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`      | 否         | 覆盖 SQLite 路径。默认 `./blog.db`。持久化卷场景可用 `/data/blog.db` 之类。                                                        |
-| `PORT`              | 否         | 生产监听端口。默认 `3000`。                                                                                               |
-| `UPLOAD_DIR`        | 否         | 图片落盘目录。默认 `./uploads/img`，启动时解析为绝对路径。                                                                           |
-| `UPLOAD_MAX_BYTES`  | 否         | 单文件解码后大小上限。默认 `10485760`（10 MB）。                                                                                |
-| `IMG_MAX_PIXELS`    | 否         | sharp 解压炸弹防护（`limitInputPixels`）。默认 `40000000`。                                                                  |
-| `IMG_ALLOWED_HOSTS` | 生产必填      | Referer fallback 白名单，逗号分隔 `host:port`。开发默认 `localhost:3000,localhost`；生产若留空则所有带 Referer 请求一律 403（强制显式配置）。 |
-| `TRUSTED_PROXY`     | 否         | 只在确认在反向代理后才设 `1`，否则忽略 `X-Forwarded-For`，避免限速器被伪造 IP 绕过。                                                          |
-| `RUN_SEED`          | 否         | 设 `1` 才会直接调用 `db/seed.ts`。生产 bundle 里 seed 函数默认休眠。                                                              |
+| 变量                  | 必填   | 说明                                                                                                        |
+| ------------------- | ---- | --------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`      | 否    | 覆盖 SQLite 路径。默认 `./blog.db`。持久化卷场景可用 `/data/blog.db` 之类。                                                  |
+| `PORT`              | 否    | 生产监听端口。默认 `3000`。                                                                                         |
+| `UPLOAD_DIR`        | 否    | 图片落盘目录。默认 `./uploads/img`，启动时解析为绝对路径。                                                                     |
+| `UPLOAD_MAX_BYTES`  | 否    | 单文件解码后大小上限。默认 `10485760`（10 MB）。                                                                          |
+| `IMG_MAX_PIXELS`    | 否    | sharp 解压炸弹防护（`limitInputPixels`）。默认 `40000000`。                                                           |
+| `IMG_ALLOWED_HOSTS` | 生产必填 | Referer fallback 白名单，逗号分隔 `host:port`。开发默认 `localhost:3000,localhost`；生产若留空则所有带 Referer 请求一律 403（强制显式配置）。 |
+| `TRUSTED_PROXY`     | 否    | 只在确认在反向代理后才设 `1`，否则忽略 `X-Forwarded-For`，避免限速器被伪造 IP 绕过。                                                   |
+| `RUN_SEED`          | 否    | 设 `1` 才会直接调用 `db/seed.ts`。生产 bundle 里 seed 函数默认休眠。                                                        |
 
 ---
 
@@ -206,13 +206,12 @@ npm start                # → http://localhost:3000
 ```bash
 docker build -t lee-blog .
 docker run --rm -p 3000:3000 \
-  -v $(pwd)/blog.db:/app/blog.db \
+  -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -v $(pwd)/data:/data \
   lee-blog
 ```
 
-要改 DB 路径，挂卷到别的位置并加 `-e DATABASE_URL=/data/blog.db`（同时挂对应 volume）。
-
-`Dockerfile` 用了国内 npm 镜像（`npm.mirrors.msh.team`）—— 不在该网络环境下构建的话，请改掉或删掉那一行。
+镜像默认使用 `DATABASE_URL=/data/blog.db` 和 `UPLOAD_DIR=/data/uploads/img`，所以把 `/data` 作为持久化卷挂载。不要把 `.env` 打进镜像；运行时通过 `docker run`、`docker compose` 或 VPS 主机注入环境变量。
 
 ### Cloudflare Pages / Render / fly.io
 
@@ -234,10 +233,10 @@ docker run --rm -p 3000:3000 \
 - 线上 schema 变更走 `npm run db:migrate`；`db:push` 只在开发用，因为它绕过 migration journal。
 - 空数据库启动时会自动写入生成的默认文章；只要已有任意文章，就不会重复写入。`db/seed.ts` 本身只在 `RUN_SEED=1` 时才会执行 —— 之前用 `import.meta.url` 判断 main module 的写法在生产 bundle 里两边塌成同一路径，每次重启都触发 UNIQUE 冲突。
 - 哈希 API key 改动前生成的旧 key 会在服务启动时失效，需要到 `/admin` 重新生成。
-- 不要把 `better-sqlite3` **或 `sharp`** 打进 `dist/boot.js`；两者都必须从 `node_modules` 加载，原生绑定路径才正确。
+- 不要把 `better-sqlite3` **或** `sharp` 打进 `dist/boot.js`；两者都必须从 `node_modules` 加载，原生绑定路径才正确。
 - `uploads/` 目录被 git 忽略 —— 请连同 `blog.db` 一起备份，否则重新部署会丢图。
 - 图片防盗链是「弱化日常滥用」，不是强访问控制：不带 `Sec-Fetch-Site` 且不带 Referer 的 `curl` 请求会被放行，因为图片本身是公开资源。
-- `Dockerfile` 默认走国内 npm 镜像 —— 不在该网络环境下构建请改掉。
+- Docker 镜像把 SQLite 和 uploads 放在镜像外的 `/data`，替换容器时要保留这个 volume。
 
 ---
 

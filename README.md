@@ -207,13 +207,12 @@ The first visit to the deployed site forces the setup overlay — create the adm
 ```bash
 docker build -t lee-blog .
 docker run --rm -p 3000:3000 \
-  -v $(pwd)/blog.db:/app/blog.db \
+  -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -v $(pwd)/data:/data \
   lee-blog
 ```
 
-For a non-default DB path, mount somewhere else and pass `-e DATABASE_URL=/data/blog.db` (plus a matching volume mount).
-
-The `Dockerfile` uses a Chinese npm mirror (`npm.mirrors.msh.team`) — change or remove that line if you build outside that network.
+The image defaults to `DATABASE_URL=/data/blog.db` and `UPLOAD_DIR=/data/uploads/img`, so mount `/data` as the persistent volume. Do not bake `.env` into the image; pass runtime env vars from `docker run`, `docker compose`, or the VPS host.
 
 ### Cloudflare Pages / Render / fly.io
 
@@ -238,7 +237,7 @@ Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path 
 - Do not bundle `better-sqlite3` **or `sharp`** into `dist/boot.js`; both must load from `node_modules` so their native binding paths remain valid.
 - `uploads/` is git-ignored — back it up alongside `blog.db` or images will be lost on redeploy.
 - The image hotlink guard is casual abuse reduction, not a strong access control: `curl` requests with no `Sec-Fetch-Site` and no Referer are allowed through, because images are public assets.
-- The `Dockerfile` defaults to a Chinese npm mirror — adjust if you build outside that network.
+- Docker images keep SQLite and uploads outside the image under `/data`; keep that volume when replacing containers.
 
 ---
 
