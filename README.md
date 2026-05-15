@@ -212,6 +212,28 @@ docker run --rm -p 3000:3000 \
   lee-blog
 ```
 
+GitHub Actions publishes the image to GitHub Container Registry on every `main` push:
+
+```bash
+docker pull ghcr.io/evo-lee/my-blog:latest
+docker pull ghcr.io/evo-lee/my-blog:0.0.1
+```
+
+`latest` points at the newest numbered image. Numbered tags auto-increment as `0.0.1`, `0.0.2`, `0.0.3`, and so on.
+
+If the GHCR package is private, log in on the VPS first with a GitHub token that has `read:packages`.
+
+Run the published image:
+
+```bash
+docker run -d --name lee-blog \
+  -p 127.0.0.1:3000:3000 \
+  -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -v /srv/my-blog/data:/data \
+  --restart unless-stopped \
+  ghcr.io/evo-lee/my-blog:latest
+```
+
 The image defaults to `DATABASE_URL=/data/blog.db` and `UPLOAD_DIR=/data/uploads/img`, so mount `/data` as the persistent volume. Do not bake `.env` into the image; pass runtime env vars from `docker run`, `docker compose`, or the VPS host.
 
 ### Cloudflare Pages / Render / fly.io

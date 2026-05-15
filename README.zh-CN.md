@@ -211,6 +211,28 @@ docker run --rm -p 3000:3000 \
   lee-blog
 ```
 
+每次 push 到 `main` 后，GitHub Actions 会把镜像发布到 GitHub Container Registry：
+
+```bash
+docker pull ghcr.io/evo-lee/my-blog:latest
+docker pull ghcr.io/evo-lee/my-blog:0.0.1
+```
+
+`latest` 指向最新的编号镜像。编号 tag 会按 `0.0.1`、`0.0.2`、`0.0.3` 递增。
+
+如果 GHCR package 是 private，VPS 需要先用带 `read:packages` 权限的 GitHub token 登录。
+
+运行已发布镜像：
+
+```bash
+docker run -d --name lee-blog \
+  -p 127.0.0.1:3000:3000 \
+  -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -v /srv/my-blog/data:/data \
+  --restart unless-stopped \
+  ghcr.io/evo-lee/my-blog:latest
+```
+
 镜像默认使用 `DATABASE_URL=/data/blog.db` 和 `UPLOAD_DIR=/data/uploads/img`，所以把 `/data` 作为持久化卷挂载。不要把 `.env` 打进镜像；运行时通过 `docker run`、`docker compose` 或 VPS 主机注入环境变量。
 
 ### Cloudflare Pages / Render / fly.io
