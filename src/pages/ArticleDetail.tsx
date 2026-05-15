@@ -15,7 +15,9 @@ export default function ArticleDetail() {
   const articleRef = useRef<HTMLDivElement>(null);
   const { t, lang } = useI18n();
 
-  const { data: post, isLoading } = usePostBySlug(id || '');
+  const { data, isLoading } = usePostBySlug(id || '');
+  const post = data?.post;
+  const images = data?.images ?? {};
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -141,7 +143,7 @@ export default function ArticleDetail() {
 
           {/* Article body */}
           <div className="prose max-w-none prose-headings:font-display prose-headings:text-foreground prose-p:font-body prose-p:text-base prose-p:leading-[1.8] prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-li:text-foreground prose-a:text-nocturne-gold prose-a:no-underline hover:prose-a:underline prose-code:font-mono prose-code:text-foreground prose-pre:bg-muted prose-blockquote:border-l-nocturne-gold prose-blockquote:text-muted-foreground prose-hr:border-border">
-            <ArticleMarkdown paragraphs={post.content} />
+            <ArticleMarkdown paragraphs={post.content} images={images} />
           </div>
 
           {/* Comments */}

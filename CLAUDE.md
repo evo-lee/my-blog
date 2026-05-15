@@ -76,11 +76,12 @@ There is no separate admin **role** today — every registered user is treated a
 
 - `PostsPanel` lists posts and uses `ConfirmButton` before deletion.
 - `CommentsPanel` filters pending / approved / all comments, then approves, unapproves, or deletes.
+- `ImageUploadPanel` uploads images (multi-file drop or click), lists existing uploads with copy-ref / delete actions, and surfaces tRPC errors inline (e.g. `BAD_REQUEST: Image is referenced by post(s): ...`).
 - `SiteSettingsPanel` edits the single `site_settings` row. It hydrates form state once on first load so focus/refetch does not overwrite unsaved edits.
 
 ### Article rendering
 
-`ArticleDetail.tsx` delegates article body rendering to `src/components/ArticleMarkdown.tsx` (`react-markdown` + `remark-gfm`). The first paragraph gets the drop cap, remaining paragraphs render as normal Markdown. `src/components/Comments.tsx` mounts below the article body, lists approved comments + their approved replies, and submits new comments as pending with a hidden honeypot field.
+`ArticleDetail.tsx` delegates article body rendering to `src/components/ArticleMarkdown.tsx` (`react-markdown` + `remark-gfm`). The first paragraph gets the drop cap, remaining paragraphs render as normal Markdown. `post.bySlug` returns `{ post, images }` where `images` is a `Record<hash, ImageRef>` populated by `api/lib/imageRefs.ts:loadImageMap` for every `hash:<16hex>` ref found in `content` or `cover_image`. `ArticleMarkdown` accepts the map and routes `![alt](hash:<16hex>)` srcs through `BlogImage` (with `<picture>` AVIF→WebP→JPEG fallback); unknown hashes render `BrokenImage`; any other src (e.g. external URLs) renders a plain `<img>`. `src/components/Comments.tsx` mounts below the article body, lists approved comments + their approved replies, and submits new comments as pending with a hidden honeypot field.
 
 ### Comments
 
@@ -106,6 +107,22 @@ There is no separate admin **role** today — every registered user is treated a
 
 If a `Content-Security-Policy` header is ever added in front of this app, `script-src` needs `https://www.googletagmanager.com` (GA) and/or the configured Umami host (Umami). Today no CSP is set; verify before turning analytics on.
 
+### Images
+
+Admin-uploaded images live in the `images` table and on disk under `UPLOAD_DIR` (default `./uploads/img`, resolved to an absolute path at boot). The pipeline (`api/lib/images.ts:processUpload`) validates in order: size cap (`UPLOAD_MAX_BYTES`, default 10 MB), magic-byte sniff via `file-type` (whitelist: `image/jpeg`, `image/png`, `image/webp`, `image/avif` — **GIF/SVG/HEIC/TIFF rejected**), pixel cap (`IMG_MAX_PIXELS`, default 40 M, passed to `sharp` as `limitInputPixels`). The hash is `sha256(input).slice(0, 16)` — re-uploading the same buffer returns the existing row without re-encoding (`findImageByHash` short-circuit).
+
+For each accepted image, `sharp` emits a Cartesian product of widths `[480, 960, 1920]` × formats `[avif, webp, jpeg]`, never upscaling. Smaller source images get fewer variants (e.g. 300px source → 3 variants at native width; 800px source → 6 at 480 + 800). Files are named `<hash>-<width>.<format>` and written atomically via `.tmp` → `rename`; if any variant fails, all already-written variants for that upload are unlinked. `cleanupTmpFiles` runs at boot to sweep orphan `.tmp` files left by a crash mid-upload.
+
+**Markdown ref syntax.** Embed an image with `![alt](hash:<16hex>)`. The `bySlug` query scans `posts.content` for matches plus checks if `posts.cover_image` itself equals `hash:<16hex>`, then returns a populated `images` map keyed by hash. `ArticleMarkdown` resolves the map at render time — unknown hashes render `BrokenImage`, non-hash srcs (external URLs) fall through to plain `<img>`.
+
+**Delete safety.** `api/lib/imageDelete.ts:deleteImage` first runs `assertNoRefs` (scans `posts.content` LIKE + `posts.cover_image` eq); if any post references the hash, the call rejects with `BAD_REQUEST` listing the offending slugs. On success it deletes the DB row first, then unlinks files via `Promise.allSettled` — unlink failures leave orphan files but the DB row (source of truth) is gone, so they can't reappear. A future cron sweep is left to v2.
+
+**Static serving + hotlink guard.** `/uploads/img/*` is mounted in `api/boot.ts` ahead of `@hono/node-server/serve-static`. The middleware (`api/middleware/imageGuard.ts`) checks `Sec-Fetch-Site` first (`cross-site` → 403; `same-origin` / `same-site` / `none` → allow); when SFS is missing it falls back to an exact-host check against `IMG_ALLOWED_HOSTS`. A 200-req/min in-memory bucket gates per-IP volume. The response carries `Cache-Control: public, max-age=31536000, immutable` because content-addressed filenames make new content always equal a new URL. **Realistic threat model**: this stops typical browser hotlinks but does **not** defeat `curl`/non-browser scrapers (no SFS sent → fallback allows empty Referer, since images are public assets); the guard is "casual abuse reduction," not a strong access control.
+
+**Vite dev integration.** `vite.config.ts` `devServer({ exclude: /^\/(?!api\/|uploads\/).*$/ })` lets `/uploads/*` reach the Hono dev server — without this, the guard would not fire in dev and behavior would diverge between dev and prod.
+
+**Bundling.** Like `better-sqlite3`, `sharp` is a native module and must be kept `--external:sharp` in the esbuild command; bundling it breaks the prebuilt binary lookup on the deploy target.
+
 ### i18n
 
 `src/i18n/I18nProvider.tsx` resolves the initial language with a lazy `useState` initializer (no `useEffect` flash). Precedence:
@@ -122,11 +139,20 @@ The home `App.tsx` wraps routes in a `SetupGuard` component. It calls `auth.isSe
 
 ### Env vars
 
-All optional. `DATABASE_URL` overrides the default SQLite path (`./blog.db`). No JWT/secret env vars exist anymore — the auth system manages its own randomness.
+All optional unless noted. `DATABASE_URL` overrides the default SQLite path (`./blog.db`). No JWT/secret env vars exist — the auth system manages its own randomness. Image-pipeline knobs:
+
+| key | default | notes |
+|-----|---------|-------|
+| `UPLOAD_DIR` | `./uploads/img` | resolved to absolute path at boot |
+| `UPLOAD_MAX_BYTES` | `10485760` | decoded binary size cap |
+| `IMG_MAX_PIXELS` | `40000000` | passed to `sharp` as `limitInputPixels` |
+| `IMG_ALLOWED_HOSTS` | dev `localhost:3000,localhost`; prod required | Referer fallback whitelist; comma-separated `host:port`. In prod, blank → all Referer-bearing requests 403 (forces explicit config) |
+| `TRUSTED_PROXY` | `0` | set `1` only behind a known reverse proxy; otherwise `X-Forwarded-For` is ignored to prevent IP spoofing of the rate limiter |
+| `RUN_SEED` | unset | set `1` to invoke `db/seed.ts` directly (otherwise the seed function is dormant inside the prod bundle) |
 
 ### Production bundling
 
-The server bundle is ESM. `better-sqlite3` must stay external in the esbuild command because its native `.node` binding is resolved relative to the real `node_modules/better-sqlite3` package at runtime. The build banner also defines `require`, `__filename`, and `__dirname` for CommonJS dependencies inside the ESM bundle. Removing either piece can produce `__filename is not defined` or `Could not locate the bindings file` during API-key migration / session cleanup on VPS deployments.
+The server bundle is ESM. **`better-sqlite3` and `sharp` must both stay external** (`--external:better-sqlite3 --external:sharp`) in the esbuild command — both ship native `.node` bindings that are resolved relative to the real `node_modules/` package at runtime; bundling them produces `Could not locate the bindings file` on the deploy target. The build banner also defines `require`, `__filename`, and `__dirname` for CommonJS dependencies inside the ESM bundle. Removing either piece can produce `__filename is not defined` during API-key migration / session cleanup on VPS deployments.
 
 ## Conventions
 
@@ -142,6 +168,8 @@ The server bundle is ESM. `better-sqlite3` must stay external in the esbuild com
 - The first-run setup overlay is **first-visitor-wins** by design (no terminal-based setup token, to keep ephemeral-filesystem deploys workable). Hit the URL immediately after deploying.
 - Existing API keys generated before the hashed-key change are invalidated on server startup; regenerate them from `/admin`.
 - Empty databases auto-seed generated starter posts on startup; this is skipped once any post exists.
-- Keep `better-sqlite3` external in esbuild; bundling it breaks native binding lookup in production.
+- Keep `better-sqlite3` **and `sharp`** external in esbuild; bundling either breaks native binding lookup in production.
 - Production schema changes go through `npm run db:migrate`. `db:push` is dev-only.
+- `db/seed.ts` only runs when `RUN_SEED=1` is set. The previous `import.meta.url`-based gate fired inside the prod bundle (because esbuild rewrites both sides to the bundled module path) and crashed every restart on UNIQUE violations.
+- `uploads/` is ignored by git. Images live there and on disk are the only copy — back the directory up alongside `blog.db`.
 - `info.md` is a leftover scaffolding log from initial shadcn setup; safe to delete, not part of the source.

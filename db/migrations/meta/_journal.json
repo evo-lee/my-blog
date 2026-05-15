@@ -15,6 +15,13 @@
       "when": 1778648812973,
       "tag": "0001_v2_analytics_and_nested_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1778818639964,
+      "tag": "0002_images",
+      "breakpoints": true
     }
   ]
 }

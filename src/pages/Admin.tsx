@@ -7,9 +7,10 @@ import SecurityPanel from '@/components/admin/SecurityPanel';
 import PostsPanel from '@/components/admin/PostsPanel';
 import SiteSettingsPanel from '@/components/admin/SiteSettingsPanel';
 import CommentsPanel from '@/components/admin/CommentsPanel';
+import ImageUploadPanel from '@/components/admin/ImageUploadPanel';
 import { Plus } from 'lucide-react';
 
-type Tab = 'posts' | 'comments' | 'settings';
+type Tab = 'posts' | 'comments' | 'images' | 'settings';
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export default function Admin() {
   const tabs: Array<{ value: Tab; label: string; badge?: number }> = [
     { value: 'posts', label: 'Posts' },
     { value: 'comments', label: 'Comments', badge: pendingCount && pendingCount > 0 ? pendingCount : undefined },
+    { value: 'images', label: 'Images' },
     { value: 'settings', label: 'Site Settings' },
   ];
 
@@ -99,6 +101,7 @@ export default function Admin() {
           {/* Tab content */}
           {tab === 'posts' && <PostsPanel />}
           {tab === 'comments' && <CommentsPanel />}
+          {tab === 'images' && <ImageUploadPanel />}
           {tab === 'settings' && <SiteSettingsPanel />}
         </div>
       </div>

@@ -111,6 +111,27 @@ export const siteSettings = sqliteTable("site_settings", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
 });
 
+// ── 图片表 ──
+// hash 是 sha256(input).slice(0, 16) —— 16 hex chars, 64-bit 碰撞域；个人博客规模够用。
+// variants 是 JSON-stringified ImageVariant[]: { width, format, storageKey, bytes? }
+// storageKey 只存相对文件名（如 "abc1234567890def-960.webp"）；公开 URL 在响应/前端
+// 边界拼 "/uploads/img/" + storageKey，避免把绝对路径锁进 DB。
+export const images = sqliteTable("images", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  hash: text("hash", { length: 16 }).notNull().unique(),
+  origName: text("orig_name", { length: 255 }).notNull(),
+  origMime: text("orig_mime", { length: 50 }).notNull(),
+  origBytes: integer("orig_bytes", { mode: "number" }).notNull(),
+  width: integer("width", { mode: "number" }).notNull(),
+  height: integer("height", { mode: "number" }).notNull(),
+  variants: text("variants").notNull(),
+  uploadedBy: integer("uploaded_by", { mode: "number" }).references(
+    () => users.id,
+    { onDelete: "set null" },
+  ),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(CURRENT_TIMESTAMP)`),
+});
+
 // ── 评论表 ──
 export const comments = sqliteTable("comments", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),

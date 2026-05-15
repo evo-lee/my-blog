@@ -244,7 +244,11 @@ async function seed() {
   client.close();
 }
 
-if (import.meta.url === new URL(process.argv[1], "file:").href) {
+// Only run when explicitly requested (e.g. `RUN_SEED=1 tsx db/seed.ts`).
+// The previous `import.meta.url === ...` gate fired inside the prod bundle
+// because esbuild rewrites both sides to point at dist/boot.js, so the seed
+// would re-run on every prod start and crash on UNIQUE violations.
+if (process.env.RUN_SEED === "1") {
   seed().catch((err) => {
     console.error("Seed failed:", err);
     process.exit(1);

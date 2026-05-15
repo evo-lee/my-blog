@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { serveStatic } from "@hono/node-server/serve-static";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { env } from "./lib/env";
@@ -12,10 +14,27 @@ import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { countWords } from "./lib/words";
 import { cleanupExpired } from "./sessions";
 import { seedData } from "../db/seed";
+import { imageGuard } from "./middleware/imageGuard";
+import { cleanupTmpFiles, getUploadDir } from "./lib/images";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
+
+// /uploads/img/* — image guard + static serving. UPLOAD_DIR is resolved to an
+// absolute path so process managers that change cwd don't break it.
+const UPLOAD_DIR = getUploadDir();
+cleanupTmpFiles().catch((err) => console.error("tmp cleanup failed:", err));
+
+app.use("/uploads/img/*", imageGuard);
+app.use(
+  "/uploads/img/*",
+  serveStatic({
+    root: path.relative(process.cwd(), path.dirname(UPLOAD_DIR)),
+    rewriteRequestPath: (p) =>
+      p.replace(/^\/uploads\/img/, "/" + path.basename(UPLOAD_DIR)),
+  }),
+);
 
 // tRPC API
 app.use("/api/trpc/*", async (c) => {
