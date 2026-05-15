@@ -6,6 +6,7 @@ Personal blog by Evo Lee — articles, works, and an admin dashboard. Single Nod
 
 - **Frontend:** React 19, Vite 7, react-router v7, Tailwind v3 + shadcn/ui, GSAP, Lenis
 - **Backend:** Hono + tRPC v11 (superjson), Drizzle ORM + better-sqlite3, DB-backed sessions (no JWT, no shared secret)
+- **Images:** `sharp` pipeline → AVIF / WebP / JPEG at multiple widths; content-addressed filenames; `Sec-Fetch-Site` + Referer hotlink guard
 - **Build:** Vite for the client, esbuild for the API → `dist/boot.js`
 - **CLI:** `scripts/publish.ts` posts Markdown articles via `X-API-Key` (stored hashed)
 
@@ -39,10 +40,16 @@ gets you back to the dashboard.
 
 All env vars are **optional**. The default SQLite path works for local dev and most deployments. Sessions are server-side (DB-backed) — there is no JWT secret to manage.
 
-| Variable       | Required | Notes                                                                                        |
-| -------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `DATABASE_URL` | no       | Override SQLite path. Default: `./blog.db`. For persistent volumes use e.g. `/data/blog.db`. |
-| `PORT`         | no       | Production listen port. Default: `3000`.                                                     |
+| Variable            | Required        | Notes                                                                                                                                      |
+| ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`      | no              | Override SQLite path. Default: `./blog.db`. For persistent volumes use e.g. `/data/blog.db`.                                               |
+| `PORT`              | no              | Production listen port. Default: `3000`.                                                                                                   |
+| `UPLOAD_DIR`        | no              | Image storage directory. Default: `./uploads/img`. Resolved to an absolute path at boot.                                                   |
+| `UPLOAD_MAX_BYTES`  | no              | Per-file decoded size cap. Default: `10485760` (10 MB).                                                                                    |
+| `IMG_MAX_PIXELS`    | no              | Pixel cap (`limitInputPixels`) for the sharp decompression-bomb guard. Default: `40000000`.                                                |
+| `IMG_ALLOWED_HOSTS` | yes in prod     | Comma-separated `host:port` whitelist for the Referer fallback. Dev defaults to `localhost:3000,localhost`. Blank in prod = all Referer-bearing requests 403. |
+| `TRUSTED_PROXY`     | no              | Set `1` only when running behind a known reverse proxy — otherwise `X-Forwarded-For` is ignored so the rate limiter can't be spoofed.      |
+| `RUN_SEED`          | no              | Set `1` to invoke `db/seed.ts` directly. The seed function is otherwise dormant inside the prod bundle.                                    |
 
 ---
 
@@ -87,7 +94,7 @@ In dev, a single Vite process serves the client AND mounts the Hono API via `@ho
 
 ### Data
 
-SQLite via `better-sqlite3`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `comments`, `site_settings`, `works`, `work_details`, `work_tags`. `users` carries both `totp_secret` (verified) and `pending_totp_secret` (written by `setup2FA`, promoted on `verify2FA`). `users.api_key` stores only a SHA-256 hex digest of the plaintext API key. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays — `parseContent` in `api/routers/post.ts` returns `[]` on corrupt rows so a bad row can't crash a request. Body limit on the API is 50 MB (`api/boot.ts`).
+SQLite via `better-sqlite3`. Tables: `users`, `sessions`, `login_challenges`, `posts`, `comments`, `site_settings`, `works`, `work_details`, `work_tags`, `images`. `users` carries both `totp_secret` (verified) and `pending_totp_secret` (written by `setup2FA`, promoted on `verify2FA`). `users.api_key` stores only a SHA-256 hex digest of the plaintext API key. `posts.content` and `work_details.content` are stored as JSON-stringified paragraph arrays — `parseContent` in `api/routers/post.ts` returns `[]` on corrupt rows so a bad row can't crash a request. `images` stores uploaded image metadata (16-hex `hash`, `variants` JSON, FK `uploaded_by` → `users`); the actual files live under `UPLOAD_DIR`. Body limit on the API is 50 MB (`api/boot.ts`).
 
 `site_settings` is a single-row table (`id=1`) seeded from `db/site-defaults.ts`. It drives the header/footer site title, localized hero copy, ICP / public security filing numbers, and localized copyright text. `comments` stores public article comments; public submissions are pending by default and become visible only after admin approval.
 
@@ -110,11 +117,20 @@ Every registered user is treated as admin today (single-admin blog). See `CLAUDE
 - `SecurityPanel` handles 2FA and API key generation / revocation.
 - `PostsPanel` lists posts and uses a shared confirm button for deletion.
 - `CommentsPanel` reviews pending / approved comments and can approve, unapprove, or delete them.
+- `ImageUploadPanel` uploads images (drop or click), lists existing uploads with copy-ref / delete actions, and surfaces tRPC errors inline (e.g. `BAD_REQUEST: Image is referenced by post(s): ...`).
 - `SiteSettingsPanel` edits the single `site_settings` row without clobbering unsaved local edits on query refetch.
 
 ### Public article rendering
 
-Article bodies render through `src/components/ArticleMarkdown.tsx` with `react-markdown` + `remark-gfm`. The first paragraph still gets the drop-cap treatment, while the remaining paragraphs render as normal Markdown. `src/components/Comments.tsx` is mounted below each article and submits pending comments with a hidden honeypot field.
+Article bodies render through `src/components/ArticleMarkdown.tsx` with `react-markdown` + `remark-gfm`. The first paragraph still gets the drop-cap treatment, while the remaining paragraphs render as normal Markdown. `post.bySlug` returns `{ post, images }` where `images` is a `Record<hash, ImageRef>` populated from every `hash:<16hex>` reference in the content body and `cover_image`. `ArticleMarkdown` routes `![alt](hash:<16hex>)` srcs through `BlogImage` (a `<picture>` with AVIF → WebP → JPEG fallback); unknown hashes render `BrokenImage`, and external URLs fall through to a plain `<img>`. `src/components/Comments.tsx` is mounted below each article and submits pending comments with a hidden honeypot field.
+
+### Images
+
+Admin-uploaded images go through `api/lib/images.ts:processUpload`: size cap → magic-byte sniff (`file-type`; whitelist JPEG / PNG / WebP / AVIF, GIF / SVG / HEIC / TIFF rejected) → pixel cap via `sharp({ limitInputPixels })` → `sha256(input).slice(0, 16)` hash → DB short-circuit (re-uploads return the existing row) → Cartesian product of widths `[480, 960, 1920]` × formats `[avif, webp, jpeg]`, never upscaling. Files are written atomically (`.tmp` → `rename`), and a partial failure unlinks every variant written so far. `cleanupTmpFiles` sweeps orphan `.tmp` files at boot.
+
+Embed an image in a post with `![alt](hash:<16hex>)`. Deleting an image first scans `posts.content` (LIKE) and `posts.cover_image` (eq) — if any post references the hash, the call rejects with `BAD_REQUEST` and the offending slug list, so links can't silently break.
+
+Static delivery: `/uploads/img/*` runs through `api/middleware/imageGuard.ts` (`Sec-Fetch-Site` primary, exact-host Referer fallback against `IMG_ALLOWED_HOSTS`, 200 req/min in-memory rate limit) ahead of `serveStatic`. Responses carry `Cache-Control: public, max-age=31536000, immutable` because hashed filenames are content-addressed. This is "casual abuse reduction" — it stops typical browser hotlinks but does not defeat `curl`/non-browser scrapers (no SFS sent → fallback allows empty Referer, since images are public assets).
 
 ### First-run flow
 
@@ -124,15 +140,15 @@ Article bodies render through `src/components/ArticleMarkdown.tsx` with `react-m
 
 ## Testing
 
-`vitest` is wired up via `npm test` and `vitest.config.ts`, but the suite is currently empty — there are no `*.test.ts` files in the repo yet. Current discovery only includes `api/**/*.test.ts` and `api/**/*.spec.ts`.
+`vitest` is wired up via `npm test` and `vitest.config.ts`. Coverage today includes the auth / 2FA flow, the image pipeline (`api/lib/images.test.ts`), reference scanning (`api/lib/imageRefs.test.ts`), the hotlink guard (`api/middleware/imageGuard.test.ts`), delete safety, the upload router, and the `post.bySlug` images-map injection. Test discovery globs `api/**/*.test.ts`, `api/**/*.spec.ts`, and `src/**/*.test.ts`.
 
-To run a single file once tests exist:
+Run a single file:
 
 ```bash
 npx vitest run api/path/to/file.test.ts
 ```
 
-For now, treat `npm run check` (TypeScript) and `npm run lint` (ESLint) as the primary correctness gates, and verify behavior end-to-end against the dev server.
+`npm run check` (TypeScript) and `npm run lint` (ESLint) are the other two correctness gates.
 
 ### Manual smoke test
 
@@ -180,7 +196,9 @@ npm run db:push          # only on first run, or when schema changes
 npm start                # → http://localhost:3000
 ```
 
-The production bundle is ESM, but `better-sqlite3` loads a native `.node` binding at runtime. Keep `better-sqlite3` external in the esbuild command and inject `require`, `__filename`, and `__dirname` via the esbuild banner. Without that, production logs can show `__filename is not defined` or `Could not locate the bindings file` while the HTTP server still appears to start.
+The production bundle is ESM, but `better-sqlite3` **and** `sharp` both load native `.node` bindings at runtime. Keep them both external in the esbuild command (`--external:better-sqlite3 --external:sharp`) and inject `require`, `__filename`, and `__dirname` via the esbuild banner. Without that, production logs can show `__filename is not defined` or `Could not locate the bindings file` while the HTTP server still appears to start.
+
+The `uploads/` directory is git-ignored and the only on-disk copy of admin-uploaded images — back it up alongside `blog.db`.
 
 The first visit to the deployed site forces the setup overlay — create the admin account immediately after deploy to avoid leaving the door open.
 
@@ -214,10 +232,12 @@ Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path 
 ## Known gotchas
 
 - The setup overlay is **first-visitor-wins** by design (no terminal-based token, to keep Cloudflare-style deploys workable). After deploying, hit the URL immediately and claim the admin account.
-- Schema changes need `npm run db:push` against the running SQLite file.
-- Empty databases are automatically seeded with the generated starter posts on server startup; this is skipped as soon as any post exists.
+- Production schema changes go through `npm run db:migrate`; `db:push` is dev-only because it bypasses the migration journal.
+- Empty databases are automatically seeded with the generated starter posts on server startup; this is skipped as soon as any post exists. `db/seed.ts` itself only runs when `RUN_SEED=1` — the prior `import.meta.url` main-module gate collapsed inside the prod bundle and caused UNIQUE violations on every restart.
 - Existing API keys generated before the hashed-key change are invalidated on server startup; regenerate them in `/admin`.
-- Do not bundle `better-sqlite3` into `dist/boot.js`; it must load from `node_modules` so its native binding path remains valid.
+- Do not bundle `better-sqlite3` **or `sharp`** into `dist/boot.js`; both must load from `node_modules` so their native binding paths remain valid.
+- `uploads/` is git-ignored — back it up alongside `blog.db` or images will be lost on redeploy.
+- The image hotlink guard is casual abuse reduction, not a strong access control: `curl` requests with no `Sec-Fetch-Site` and no Referer are allowed through, because images are public assets.
 - The `Dockerfile` defaults to a Chinese npm mirror — adjust if you build outside that network.
 
 ---
