@@ -3,11 +3,16 @@ import { useNavigate } from 'react-router';
 import { trpc } from '@/providers/trpc-client';
 import { SEO } from '@/components/SEO';
 
-export default function AdminSetup() {
+type AdminSetupProps = {
+  requiresSetupToken?: boolean;
+};
+
+export default function AdminSetup({ requiresSetupToken = false }: AdminSetupProps) {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,9 +40,17 @@ export default function AdminSetup() {
       setError('Password must be at least 6 characters');
       return;
     }
+    if (requiresSetupToken && !setupToken.trim()) {
+      setError('Setup token is required');
+      return;
+    }
 
     setIsSubmitting(true);
-    setupMutation.mutate({ username, password });
+    setupMutation.mutate({
+      username,
+      password,
+      setupToken: requiresSetupToken ? setupToken : undefined,
+    });
   };
 
   return (
@@ -96,6 +109,22 @@ export default function AdminSetup() {
                 required
               />
             </div>
+
+            {requiresSetupToken && (
+              <div>
+                <label className="block font-mono text-[10px] tracking-wider uppercase text-muted-foreground mb-2">
+                  Setup Token
+                </label>
+                <input
+                  type="password"
+                  value={setupToken}
+                  onChange={(e) => setSetupToken(e.target.value)}
+                  className="w-full px-4 py-3 bg-card border border-border rounded-sm font-body text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-nocturne-gold/50"
+                  placeholder="ADMIN_SETUP_TOKEN"
+                  required
+                />
+              </div>
+            )}
 
             {error && (
               <p className="font-mono text-xs text-red-400">{error}</p>

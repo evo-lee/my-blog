@@ -97,6 +97,32 @@ async function waitForStarterPosts() {
 }
 
 describe("admin 2FA setup", () => {
+  it("requires the configured bootstrap token before creating the first admin", async () => {
+    process.env.ADMIN_SETUP_TOKEN = "deploy-only-token";
+
+    await expect(
+      publicCaller.auth.setup({
+        username: "admin",
+        password: "correct-password",
+      }),
+    ).rejects.toThrow("Invalid setup token");
+
+    await publicCaller.auth.setup({
+      username: "admin",
+      password: "correct-password",
+      setupToken: "deploy-only-token",
+    });
+
+    const users = rawDb.prepare("SELECT count(*) as count FROM users").get() as {
+      count: number;
+    };
+    expect(users.count).toBe(1);
+
+    rawDb.prepare("DELETE FROM users").run();
+    rawDb.prepare("DELETE FROM sqlite_sequence WHERE name = 'users'").run();
+    delete process.env.ADMIN_SETUP_TOKEN;
+  });
+
   it("requires TOTP confirmation before enabling login 2FA and can be removed/reset", async () => {
     await publicCaller.auth.setup({
       username: "admin",

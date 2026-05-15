@@ -8,9 +8,9 @@ First-run setup before any `npm` command:
 
 1. **Node.js**: 20.x or newer (ESM-only project, `"type": "module"`).
 2. **Install deps**: `npm install` (uses `package-lock.json`; do not switch to pnpm/yarn).
-3. **Env file**: optional. Defaults work for local dev. Only set `DATABASE_URL` if you need a non-default SQLite path. No JWT secret required (sessions are server-side).
+3. **Env file**: optional. Defaults work for local dev. Set `DATABASE_URL` only if you need a non-default SQLite path; set `ADMIN_SETUP_TOKEN` in production to protect first-run setup. No JWT secret required (sessions are server-side).
 4. **DB init**: `npm run db:push` creates SQLite tables at `DATABASE_URL` path (default `./blog.db`).
-5. **Admin account**: on first visit to `localhost:3000` (any path), the app forces a one-time setup page to create the admin username + password.
+5. **Admin account**: on first visit to `localhost:3000` (any path), the app forces a one-time setup page. If `ADMIN_SETUP_TOKEN` is set, that token is required before the first admin can be created.
 6. **Optional CLI auth**: for `scripts/publish.ts`, write `~/.leeblog.json` with `{ "apiKey": "..." }` matching a row in `users.api_key`, or set `LEEBLOG_API_KEY`.
 
 ## Commands
@@ -135,7 +135,7 @@ The provider persists every switch to `localStorage` and keeps `document.documen
 
 ### First-run flow
 
-The home `App.tsx` wraps routes in a `SetupGuard` component. It calls `auth.isSetup`; while no admin exists, **any URL** renders the `AdminSetup` page instead of the requested route. After the admin is created, the query is invalidated and the user is redirected to `/`. Direct `/admin/setup` routes no longer exist.
+The home `App.tsx` wraps routes in a `SetupGuard` component. It calls `auth.isSetup`; while no admin exists, **any URL** renders the `AdminSetup` page instead of the requested route. `auth.isSetup` also tells the client whether `ADMIN_SETUP_TOKEN` is configured, and `auth.setup` requires a matching token when it is. After the admin is created, the query is invalidated and the user is redirected to `/`. Direct `/admin/setup` routes no longer exist.
 
 ### Env vars
 
@@ -148,6 +148,7 @@ All optional unless noted. `DATABASE_URL` overrides the default SQLite path (`./
 | `IMG_MAX_PIXELS` | `40000000` | passed to `sharp` as `limitInputPixels` |
 | `IMG_ALLOWED_HOSTS` | dev `localhost:3000,localhost`; prod required | Referer fallback whitelist; comma-separated `host:port`. In prod, blank → all Referer-bearing requests 403 (forces explicit config) |
 | `TRUSTED_PROXY` | `0` | set `1` only behind a known reverse proxy; otherwise `X-Forwarded-For` is ignored to prevent IP spoofing of the rate limiter |
+| `ADMIN_SETUP_TOKEN` | unset | optional bootstrap token for first-run admin creation; set a long random value in production |
 | `RUN_SEED` | unset | set `1` to invoke `db/seed.ts` directly (otherwise the seed function is dormant inside the prod bundle) |
 
 ### Production bundling
@@ -165,7 +166,7 @@ The server bundle is ESM. **`better-sqlite3` and `sharp` must both stay external
 
 ## Things to know
 
-- The first-run setup overlay is **first-visitor-wins** by design (no terminal-based setup token, to keep ephemeral-filesystem deploys workable). Hit the URL immediately after deploying.
+- Without `ADMIN_SETUP_TOKEN`, first-run setup falls back to first-visitor-wins. Set the token in production so only someone with deploy access can create the first admin.
 - Existing API keys generated before the hashed-key change are invalidated on server startup; regenerate them from `/admin`.
 - Empty databases auto-seed generated starter posts on startup; this is skipped once any post exists.
 - Keep `better-sqlite3` **and `sharp`** external in esbuild; bundling either breaks native binding lookup in production.

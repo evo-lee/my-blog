@@ -3,3 +3,10 @@ dist
 .git
 *.swp
 *.log
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+uploads
+coverage

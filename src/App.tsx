@@ -59,7 +59,9 @@ function Home() {
 function SetupGuard({ children }: { children: ReactNode }) {
   const { data: setupData, isLoading } = trpc.auth.isSetup.useQuery();
   if (isLoading) return null;
-  if (setupData?.isSetup) return <AdminSetup />;
+  if (setupData?.isSetup) {
+    return <AdminSetup requiresSetupToken={setupData.requiresSetupToken} />;
+  }
   return <>{children}</>;
 }
 

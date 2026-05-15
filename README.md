@@ -30,9 +30,10 @@ npm run dev
 ```
 
 First admin: open `http://localhost:3000` (any path will do). The app detects
-that no admin exists and forces a one-time setup screen — choose a username
-and password, submit, and you land on the home page. After that, `/admin/login`
-gets you back to the dashboard.
+that no admin exists and forces a one-time setup screen. If
+`ADMIN_SETUP_TOKEN` is set, the setup form requires that token before it can
+create the first admin. After that, `/admin/login` gets you back to the
+dashboard.
 
 ---
 
@@ -49,6 +50,7 @@ All env vars are **optional**. The default SQLite path works for local dev and m
 | `IMG_MAX_PIXELS`    | no              | Pixel cap (`limitInputPixels`) for the sharp decompression-bomb guard. Default: `40000000`.                                                |
 | `IMG_ALLOWED_HOSTS` | yes in prod     | Comma-separated `host:port` whitelist for the Referer fallback. Dev defaults to `localhost:3000,localhost`. Blank in prod = all Referer-bearing requests 403. |
 | `TRUSTED_PROXY`     | no              | Set `1` only when running behind a known reverse proxy — otherwise `X-Forwarded-For` is ignored so the rate limiter can't be spoofed.      |
+| `ADMIN_SETUP_TOKEN` | recommended in prod | Optional bootstrap token required by the first-run setup form. Use a long random value and keep it out of the image.                    |
 | `RUN_SEED`          | no              | Set `1` to invoke `db/seed.ts` directly. The seed function is otherwise dormant inside the prod bundle.                                    |
 
 ---
@@ -200,7 +202,9 @@ The production bundle is ESM, but `better-sqlite3` **and** `sharp` both load nat
 
 The `uploads/` directory is git-ignored and the only on-disk copy of admin-uploaded images — back it up alongside `blog.db`.
 
-The first visit to the deployed site forces the setup overlay — create the admin account immediately after deploy to avoid leaving the door open.
+For production, set `ADMIN_SETUP_TOKEN` before the first boot. The setup screen
+will ask for that token, so a random visitor cannot claim the admin account just
+by reaching the empty site first.
 
 ### Docker
 
@@ -208,6 +212,7 @@ The first visit to the deployed site forces the setup overlay — create the adm
 docker build -t lee-blog .
 docker run --rm -p 3000:3000 \
   -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -e ADMIN_SETUP_TOKEN=replace-with-a-long-random-token \
   -v $(pwd)/data:/data \
   lee-blog
 ```
@@ -229,6 +234,7 @@ Run the published image:
 docker run -d --name lee-blog \
   -p 127.0.0.1:3000:3000 \
   -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -e ADMIN_SETUP_TOKEN=replace-with-a-long-random-token \
   -v /srv/my-blog/data:/data \
   --restart unless-stopped \
   ghcr.io/evo-lee/my-blog:latest
@@ -238,7 +244,8 @@ The image defaults to `DATABASE_URL=/data/blog.db` and `UPLOAD_DIR=/data/uploads
 
 ### Cloudflare Pages / Render / fly.io
 
-Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path (e.g. `/data/blog.db`). Visit the deployed URL right after the first build to claim the admin account before anyone else can.
+Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path
+(e.g. `/data/blog.db`) and set `ADMIN_SETUP_TOKEN` before first boot.
 
 ---
 
@@ -252,7 +259,7 @@ Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path 
 
 ## Known gotchas
 
-- The setup overlay is **first-visitor-wins** by design (no terminal-based token, to keep Cloudflare-style deploys workable). After deploying, hit the URL immediately and claim the admin account.
+- Without `ADMIN_SETUP_TOKEN`, the setup overlay falls back to first-visitor-wins. Set the token in production so setup is limited to whoever has deploy access.
 - Production schema changes go through `npm run db:migrate`; `db:push` is dev-only because it bypasses the migration journal.
 - Empty databases are automatically seeded with the generated starter posts on server startup; this is skipped as soon as any post exists. `db/seed.ts` itself only runs when `RUN_SEED=1` — the prior `import.meta.url` main-module gate collapsed inside the prod bundle and caused UNIQUE violations on every restart.
 - Existing API keys generated before the hashed-key change are invalidated on server startup; regenerate them in `/admin`.

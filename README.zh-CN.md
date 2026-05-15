@@ -30,8 +30,8 @@ npm run dev
 ```
 
 首个管理员：浏览器访问 `http://localhost:3000`（任意路径都行）。应用检测到没有
-管理员，会强制弹出一次性 setup 页面 —— 填用户名、密码、提交，立即跳转首页。
-之后通过 `/admin/login` 即可回到后台。
+管理员，会强制弹出一次性 setup 页面。如果设置了 `ADMIN_SETUP_TOKEN`，setup 表单会要求
+填写这个 token 后才允许创建首个管理员。之后通过 `/admin/login` 即可回到后台。
 
 ---
 
@@ -48,6 +48,7 @@ npm run dev
 | `IMG_MAX_PIXELS`    | 否    | sharp 解压炸弹防护（`limitInputPixels`）。默认 `40000000`。                                                           |
 | `IMG_ALLOWED_HOSTS` | 生产必填 | Referer fallback 白名单，逗号分隔 `host:port`。开发默认 `localhost:3000,localhost`；生产若留空则所有带 Referer 请求一律 403（强制显式配置）。 |
 | `TRUSTED_PROXY`     | 否    | 只在确认在反向代理后才设 `1`，否则忽略 `X-Forwarded-For`，避免限速器被伪造 IP 绕过。                                                   |
+| `ADMIN_SETUP_TOKEN` | 生产建议 | 首次初始化管理员的 bootstrap token。建议使用长随机值，并且只通过运行时环境变量注入，不要打进镜像。                                           |
 | `RUN_SEED`          | 否    | 设 `1` 才会直接调用 `db/seed.ts`。生产 bundle 里 seed 函数默认休眠。                                                        |
 
 ---
@@ -199,7 +200,8 @@ npm start                # → http://localhost:3000
 
 `uploads/` 目录在 git 里被忽略，是 admin 上传图片在磁盘上的唯一一份 —— 请连同 `blog.db` 一起备份。
 
-部署上线后第一次访问会强制弹 setup 浮层 —— 立即创建管理员账号，避免给陌生人留窗口。
+生产环境建议在首次启动前设置 `ADMIN_SETUP_TOKEN`。setup 页面会要求填写这个 token，
+这样陌生人即使先访问空站点，也无法抢占管理员账号。
 
 ### Docker
 
@@ -207,6 +209,7 @@ npm start                # → http://localhost:3000
 docker build -t lee-blog .
 docker run --rm -p 3000:3000 \
   -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -e ADMIN_SETUP_TOKEN=replace-with-a-long-random-token \
   -v $(pwd)/data:/data \
   lee-blog
 ```
@@ -228,6 +231,7 @@ docker pull ghcr.io/evo-lee/my-blog:0.0.1
 docker run -d --name lee-blog \
   -p 127.0.0.1:3000:3000 \
   -e IMG_ALLOWED_HOSTS=your-domain.example \
+  -e ADMIN_SETUP_TOKEN=replace-with-a-long-random-token \
   -v /srv/my-blog/data:/data \
   --restart unless-stopped \
   ghcr.io/evo-lee/my-blog:latest
@@ -237,7 +241,7 @@ docker run -d --name lee-blog \
 
 ### Cloudflare Pages / Render / fly.io
 
-只要平台支持持久化卷即可：把 `DATABASE_URL` 指向挂载路径（如 `/data/blog.db`）。第一次构建完成后立刻打开域名抢占管理员账号，别给别人机会。
+只要平台支持持久化卷即可：把 `DATABASE_URL` 指向挂载路径（如 `/data/blog.db`），并在首次启动前设置 `ADMIN_SETUP_TOKEN`。
 
 ---
 
@@ -251,7 +255,7 @@ docker run -d --name lee-blog \
 
 ## 已知坑位
 
-- Setup 浮层是**先到先得**的设计（不走终端 token，是为了适配 Cloudflare 之类的部署）。部署完立即打开域名抢占管理员账号。
+- 如果不设置 `ADMIN_SETUP_TOKEN`，setup 浮层会退回先到先得模式。生产环境建议设置 token，把初始化权限限制给拥有部署权限的人。
 - 线上 schema 变更走 `npm run db:migrate`；`db:push` 只在开发用，因为它绕过 migration journal。
 - 空数据库启动时会自动写入生成的默认文章；只要已有任意文章，就不会重复写入。`db/seed.ts` 本身只在 `RUN_SEED=1` 时才会执行 —— 之前用 `import.meta.url` 判断 main module 的写法在生产 bundle 里两边塌成同一路径，每次重启都触发 UNIQUE 冲突。
 - 哈希 API key 改动前生成的旧 key 会在服务启动时失效，需要到 `/admin` 重新生成。

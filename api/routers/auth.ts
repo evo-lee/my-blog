@@ -4,15 +4,22 @@ import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
+import { env } from "../lib/env";
 
 // API keys are stored in users.api_key as a SHA-256 hex digest (64 chars).
 // The plaintext value is returned to the admin once at generation time and
 // never persisted, mirroring the session-token pattern in sessions.ts.
 function hashApiKey(plaintext: string): string {
   return createHash("sha256").update(plaintext).digest("hex");
+}
+
+function setupTokenMatches(input: string, expected: string): boolean {
+  const inputHash = createHash("sha256").update(input).digest();
+  const expectedHash = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(inputHash, expectedHash);
 }
 import { createRouter, publicQuery, adminQuery } from "../middleware";
 import {
@@ -32,7 +39,10 @@ export const authRouter = createRouter({
   isSetup: publicQuery.query(async () => {
     const db = getDb();
     const count = await db.select().from(users).limit(1);
-    return { isSetup: count.length === 0 };
+    return {
+      isSetup: count.length === 0,
+      requiresSetupToken: !!env.adminSetupToken,
+    };
   }),
 
   // ── 初始化管理员账号（仅首次）──
@@ -41,10 +51,22 @@ export const authRouter = createRouter({
       z.object({
         username: z.string().min(3).max(50),
         password: z.string().min(6).max(100),
+        setupToken: z.string().max(200).optional(),
       })
     )
     .mutation(async ({ input }) => {
       const db = getDb();
+      const expectedSetupToken = env.adminSetupToken;
+      if (
+        expectedSetupToken &&
+        !setupTokenMatches(input.setupToken ?? "", expectedSetupToken)
+      ) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid setup token",
+        });
+      }
+
       const hash = await bcrypt.hash(input.password, 12);
 
       // Serialize concurrent setups via a transaction so two simultaneous
