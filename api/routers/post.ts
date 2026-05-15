@@ -4,6 +4,7 @@ import { and, eq, or, desc, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { posts } from "@db/schema";
 import { createRouter, publicQuery, adminQuery } from "../middleware";
+import { extractCoverHash, loadImageMap, scanRefs } from "../lib/imageRefs";
 
 // Escape SQLite LIKE wildcards so user-supplied `%` / `_` are matched
 // literally instead of degenerating into a full-table scan. Paired with
@@ -65,6 +66,8 @@ export const postRouter = createRouter({
     }),
 
   // 根据 slug 获取单篇已发布文章
+  // 返回 { post, images } —— images 是 markdown 里 `hash:<16hex>` 引用以及
+  // cover_image 字段（若也是 hash:xxx 形式）解析后的 map。
   bySlug: publicQuery
     .input(z.object({ slug: z.string() }))
     .query(async ({ input }) => {
@@ -77,9 +80,19 @@ export const postRouter = createRouter({
 
       if (result.length === 0) return null;
 
+      const row = result[0]!;
+      const content = parseContent(row.content);
+
+      const hashes = scanRefs(content);
+      const coverHash = extractCoverHash(row.coverImage);
+      if (coverHash) hashes.push(coverHash);
+
+      const images =
+        hashes.length > 0 ? await loadImageMap([...new Set(hashes)]) : {};
+
       return {
-        ...result[0],
-        content: parseContent(result[0].content),
+        post: { ...row, content },
+        images,
       };
     }),
 
