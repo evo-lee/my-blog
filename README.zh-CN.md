@@ -268,4 +268,4 @@ docker run -d --name lee-blog \
 
 ## 许可
 
-个人项目，未授予任何许可。未经许可请勿再分发。
+MIT。详见 [LICENSE](./LICENSE)。

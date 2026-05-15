@@ -272,4 +272,4 @@ Anywhere with a persistent volume works: point `DATABASE_URL` at the mount path
 
 ## License
 
-Personal project. No license granted; do not redistribute without permission.
+MIT. See [LICENSE](./LICENSE).
