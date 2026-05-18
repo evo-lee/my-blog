@@ -20,6 +20,7 @@ npm run dev          # Vite + Hono dev server on :3000 (HMR for both client and 
 npm run build        # vite build (client → dist/public) + esbuild api/boot.ts (→ dist/boot.js)
 npm start            # NODE_ENV=production node dist/boot.js
 npm test             # vitest run
+npm run test:security # security probe against a running server (see below)
 npm run check        # tsc -b (type-check all tsconfig projects)
 npm run lint         # eslint .
 npm run format       # prettier --write .
@@ -40,6 +41,7 @@ Single Vite process serves both the React client and the Hono API in dev (via `@
 - `api/` — Hono server. `boot.ts` mounts `/api/trpc/*` (tRPC fetch adapter) and `/api/publish` (REST endpoint for the CLI), runs `cleanupExpired()` on startup + hourly, and nulls legacy plaintext API keys on startup. `router.ts` composes feature routers from `routers/` (`post`, `work`, `auth`, `settings`, `comment`). `middleware.ts` defines `publicQuery` / `authedQuery` / `adminQuery` procedures. `context.ts` builds the per-request `TrpcContext` (resolves `user` and `authMethod` from session cookie or hashed `x-api-key` header). `sessions.ts` issues/verifies/revokes DB-backed sessions and 2FA login challenges. `cookies.ts` defines the shared session-cookie helpers (HttpOnly, SameSite=Lax, `Secure` in production, 7-day Max-Age). `lib/words.ts` is the publish-side word-count helper (returns 0 for empty input). `queries/connection.ts` is the singleton Drizzle client. `lib/env.ts` exposes runtime flags (just `isProduction` today).
 - `db/` — Drizzle schema (`schema.ts`), shared site defaults (`site-defaults.ts`), relations (`relations.ts`), seed (`seed.ts`), generated migrations (`migrations/`). Imported via `@db/*` (also aliased as plain `db`).
 - `scripts/publish.ts` — Node CLI that POSTs Markdown articles (with frontmatter) to `/api/publish` using an `X-API-Key`. Reads `~/.leeblog.json` or `LEEBLOG_API_KEY`.
+- `scripts/security-test.ts` — black-box security probe (see "Security probe" below).
 
 ### Path aliases (`vite.config.ts` + `tsconfig.json`)
 
@@ -122,6 +124,28 @@ For each accepted image, `sharp` emits a Cartesian product of widths `[480, 960,
 **Vite dev integration.** `vite.config.ts` `devServer({ exclude: /^\/(?!api\/|uploads\/).*$/ })` lets `/uploads/*` reach the Hono dev server — without this, the guard would not fire in dev and behavior would diverge between dev and prod.
 
 **Bundling.** Like `better-sqlite3`, `sharp` is a native module and must be kept `--external:sharp` in the esbuild command; bundling it breaks the prebuilt binary lookup on the deploy target.
+
+### Security probe
+
+`scripts/security-test.ts` is a black-box probe that hits a running server with the attack shapes the image guard and admin surface are supposed to reject. It is **not** part of `npm test` — the vitest suite covers unit-level behaviour (e.g. `api/middleware/imageGuard.test.ts`); this script verifies the wired-up runtime. Run against a dev server (`npm run dev`) or staging:
+
+```bash
+npm run dev                                           # in another terminal
+npm run test:security                                 # default http://localhost:3000
+npm run test:security -- --server=https://blog.example.com
+npm run test:security -- --skip-ratelimit             # skip the 220-req burst
+npm run test:security -- --api-key=<plaintext-key>    # also test adminQuery rejects API-key auth
+```
+
+What it covers:
+
+- **Image guard** — `Sec-Fetch-Site` verdicts (cross-site denied, same-origin/same-site/none allowed, cross-site beats matching Referer), Referer fallback when SFS is missing (empty allowed, evil host denied, malformed denied, subdomain-confusion denied), `Cache-Control: immutable` + `X-Content-Type-Options: nosniff` on success, per-IP rate limit firing at the 200-req cap, and that `/uploads/img/../../etc/passwd` does not escape.
+- **Admin surface** — `auth.setup` on an initialized DB returns CONFLICT (cannot create a second admin), `auth.loginStep1` returns UNAUTHORIZED for bogus creds, a SQL-injection-shaped username returns a clean 401 (no driver leak), `auth.loginStep2` rejects forged temp tokens, every `adminQuery` (e.g. `auth.revokeApiKey`, `auth.setup2FA`) returns UNAUTHORIZED without a real session cookie, a forged session cookie does not grant admin, and (with `--api-key`) API-key auth is rejected by `adminQuery` with FORBIDDEN.
+- **Publish endpoint** — `/api/publish` returns 401 with no key / garbage key and 400 on malformed JSON.
+
+The image-guard probes use a non-existent hash. The guard runs **before** `serve-static`, so the allowed-case status is 404 (file missing) — that still proves the guard let the request through; only 403/429 mean the guard intervened. The script treats `status !== 403 && status !== 429` as "allowed by guard". The rate-limit case fires real volume from one IP; in dev all loopback requests share a single bucket, so it converges to 429 quickly. Re-running within 60 s leaves the bucket near-exhausted — restart the dev server (or wait one minute) before another full run.
+
+The script is read-only: it does not create users, sessions, posts, or comments that survive (`comment.submit` may insert a pending row depending on honeypot semantics — purge from the admin dashboard if it bothers you).
 
 ### i18n
 
