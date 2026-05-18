@@ -1,3 +1,5 @@
+
+
 # Lee's Blog
 
 [English](./README.md) · 简体中文
@@ -48,7 +50,7 @@ npm run dev
 | `IMG_MAX_PIXELS`    | 否    | sharp 解压炸弹防护（`limitInputPixels`）。默认 `40000000`。                                                           |
 | `IMG_ALLOWED_HOSTS` | 生产必填 | Referer fallback 白名单，逗号分隔 `host:port`。开发默认 `localhost:3000,localhost`；生产若留空则所有带 Referer 请求一律 403（强制显式配置）。 |
 | `TRUSTED_PROXY`     | 否    | 只在确认在反向代理后才设 `1`，否则忽略 `X-Forwarded-For`，避免限速器被伪造 IP 绕过。                                                   |
-| `ADMIN_SETUP_TOKEN` | 生产建议 | 首次初始化管理员的 bootstrap token。建议使用长随机值，并且只通过运行时环境变量注入，不要打进镜像。                                           |
+| `ADMIN_SETUP_TOKEN` | 生产建议 | 首次初始化管理员的 bootstrap token。建议使用长随机值，并且只通过运行时环境变量注入，不要打进镜像。                                                 |
 | `RUN_SEED`          | 否    | 设 `1` 才会直接调用 `db/seed.ts`。生产 bundle 里 seed 函数默认休眠。                                                        |
 
 ---
